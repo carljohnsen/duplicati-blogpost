@@ -289,4 +289,6 @@ And if we construct the same table as before, we see that the runtime has been r
 |  1 MB         | 00:42:44.82 |            9.138x |                       1.293x |
 
 While there's still a problem to investigate, we've now sped up a part of the process, which shouldn't have been a bottleneck in the first place. Running a compact of a backup should now start up a lot faster when there are a lot of files.
-While there's still a problem to investigate, we've now sped up a part of the process, which shouldn't have been a bottleneck in the first place. Running a compact of a backup should now start up a lot faster, when there's a lot of files.
+
+## Conclusion
+By identifying and optimizing the LINQ queries in the `DoCompact()` method, we achieved a significant performance improvement. The use of `HashSet` for faster lookups proved to be the most effective solution, reducing the total execution time by 31%. This optimization now results in the compacting process starting shortly after generating the report indicating which volumes to compact, where the majority of the work should lie when compacting. The solution has been merged in the pull request [\#5595](https://github.com/duplicati/duplicati/pull/5595).
