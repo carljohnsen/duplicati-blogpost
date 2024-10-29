@@ -1,5 +1,5 @@
 # Speeding up inner workings of `DoCompact()` by up to 1000x
-During the benchmarking of Duplicati under different parameter configurations, one particular step in the process took up a considerable amount of time (25 minutes out of the 65 minute total runtime). This blog post describes the identification of the problem, the solution, and the resulting impact. The solution has been merged in the pull request [\#5595](https://github.com/duplicati/duplicati/pull/5595).
+During the benchmarking of Duplicati under different parameter configurations, one particular step in the process took up a considerable amount of time (20 minutes out of the 65 minute total runtime). This blog post describes the identification of the problem, the solution, and the resulting impact. The solution has been merged in the pull request [\#5595](https://github.com/duplicati/duplicati/pull/5595).
 
 # TL:DR; Two LINQ queries were the culprits.
 By changing the underlying data structure of the two LINQ queries, the were sped up by up to 4 orders of magnitude, essentially removing their impact.
