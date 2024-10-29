@@ -250,9 +250,12 @@ To ensure that the results are not specific to a MacBook Pro, we also ran the mi
 
 ![Scaling results from an Intel i7-4770k](figures/win_scaling.png)
 
-As a bonus, we plotted the scaling of `HashSet` and PLINQ `HashSet` across all platforms:
+For all of them, we see that the `HashSet` implementation is an overall solid solution and as such is a good candidate for the solution.
+Just for the fun of it, we also plotted the scaling of `HashSet` and PLINQ `HashSet` across all platforms:
 
 ![Scaling results from all platforms](figures/cross_platform.png)
+
+The `HashSet` plot is pretty much as expected, essentially ordering the implementations by age. Interestingly, for the PLINQ, the W5-2445 beats the AMD 7975WX, and the i7-4770k beats the AMD 1950X, despite both AMD CPUs having more cores. This indicates that the Intel CPUs are better at handling the overhead of starting up the threads, which is interesting. However, that is a topic for another blog post.
 
 # Impact
 Going back to the original motivation, we can now apply the `HashSet` implementation to the two LINQ queries in `CompactHandler.cs`:
