@@ -255,7 +255,7 @@ Just for the fun of it, we also plotted the scaling of `HashSet` and PLINQ `Hash
 
 ![Scaling results from all platforms](figures/cross_platform.png)
 
-The `HashSet` plot is pretty much as expected, essentially ordering the implementations by age. Interestingly, for the PLINQ, the W5-2445 beats the AMD 7975WX, and the i7-4770k beats the AMD 1950X, despite both AMD CPUs having more cores. This indicates that the Intel CPUs are better at handling the overhead of starting up the threads, which is interesting. However, that is a topic for another blog post.
+The `HashSet` plot is pretty much as expected, essentially ordering the implementations by age. Interestingly, for the PLINQ, the W5-2445 beats the AMD 7975WX, and the i7-4770k beats the AMD 1950X, despite both AMD CPUs having more cores than their Intel counterpart. This indicates that the Intel CPUs are better at handling the overhead of starting up the threads, which is interesting. However, that is a topic for another blog post.
 
 # Impact
 Going back to the original motivation, we can now apply the `HashSet` implementation to the two LINQ queries in `CompactHandler.cs`:
