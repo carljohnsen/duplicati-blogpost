@@ -3,7 +3,7 @@ During the benchmarking of Duplicati under different parameter configurations, o
 
 # TL:DR; Two LINQ queries were the culprits.
 By changing the underlying data structure of the two LINQ queries, the were sped up by up to 4 orders of magnitude, essentially removing their impact.
-![Scaling results](mac_scaling.png)
+![Scaling results](figures/mac_scaling.png)
 
 # Machine and setup
 All of the plots and data shown here are performed on a MacBook Pro 2021 with an M1 Max chip, running macOS Sonoma 14.6.1. All of the benchmarks were run with `dotnet run -c Release`. Other things were running on the machine during the benchmarks, but the machine was not under heavy load, so the results should be valid. The folder being backed up has 3449 files, 677 folders totaling 68 GB, amongst which there are duplicates. The remote storage is a workstation on a 10 GbE local network over SSH to a RAID 5 array of 8 HDDs, so that shouldn't be a bottleneck.
@@ -22,15 +22,16 @@ As I was tuning the `--dblock-size` (size of volumes) parameter, I noticed an ex
 
 Wow, more than 10 times slower, that seems excessive. Let's dive further by profiling the exact same call with `--dblock-size` 50 and 1:
 
-![Profiler screenshot of 50m](profile_50m.png)
-![Profiler screenshot of 1m](profile_1m.png)
+![Profiler screenshot of 50m](figures/profile_50m.png)
+
+![Profiler screenshot of 1m](figures/profile_1m.png)
 
 The first thing we notice is that it looks like the same type of workload shown in the 50 profiling is the same as the first 3rd of the 1 profiling.
 Thus, it looks like the 1 is doing something more. Diving further, we found that the issue was that due to `--dblock-size` and `--block-size` being equivalent, the backup run would perform a compact every time, due to the sizes always matching up. While the triggering of the compact was unintended, it pointed out a performance issue in the compacting process.
 
 Looking at the console output, we see that it stalls right after processing all of the blocks, and before performing the download, check and delete steps. This indicates that the issue is in the prelininary steps of the compacting process. Zooming into that part of the profiling highlights the issue:
 
-![Profiler screenshot highlighting the stall](profile_docompact.png)
+![Profiler screenshot highlighting the stall](figures/profile_docompact.png)
 
 Here we see that the majority of the time spent is spent on LINQ and Collections operations. If we look into the code, we see that the two LINQ queries (`Duplicati/Library/Main/Operation/CompactHandler.cs` previously lines 131-133,144-146):
 
@@ -196,11 +197,11 @@ for (int i = 1; i <= 10; i++)
 Each of the implementations have been run with 10 warmup runs and a 1000 runs, except for the original and composite versions, which have been run with 5 warmup and 10 runs due to their extremely slow performance.
 We start by looking at the effect of each of overlapping data percantage for each of the solutions:
 
-![Results showing different overlap percentages for each implementation](overlap.png)
+![Results showing different overlap percentages for each implementation](figures/overlap.png)
 
 Here we see that the effect is somewhat neglible, so to simplify the results, we will only look at the 50% overlap case.
 
-![Results showing how each implementation scales](mac_scaling.png)
+![Results showing how each implementation scales](figures/mac_scaling.png)
 
 First of all, this plot cements the problem: the original solution scales very poorly, and quickly becomes much worse (notice that both axes are log scale). Second of all, we see that using LINQ composition doesn't change anything, which is to be expected.
 
@@ -214,7 +215,7 @@ Finally, looking at the parallel implementations, we see that when the sizes bec
 
 To provide another view of the results, we can look at the time spent per element:
 
-![Results showing time per element](mac_per_elem.png)
+![Results showing time per element](figures/mac_per_elem.png)
 
 Here we see that the original (and composite) solutions become progressively worse as the data size increases, while the rest of the solutions are stable (considering after the saturation point for the parallel implementations).
 
@@ -223,17 +224,17 @@ The final winner is the `HashSet` implementation, which is the fastest and is st
 ## Microbenchmark across platforms
 To ensure that the results are not only for a MacBook Pro, we also ran the microbenchmark on three Linux machines and a Windows machine. For completeness, here are the plots for the 50% overlap case on these machines:
 
-![Scaling results from an AMD 7975WX](t02_scaling.png)
+![Scaling results from an AMD 7975WX](figures/t02_scaling.png)
 
-![Scaling results from an Intel W5-2445](w5_scaling.png)
+![Scaling results from an Intel W5-2445](figures/w5_scaling.png)
 
-![Scaling results from an AMD 1950X](t00_scaling.png)
+![Scaling results from an AMD 1950X](figures/t00_scaling.png)
 
-![Scaling results from an Intel i7-4770k](win_scaling.png)
+![Scaling results from an Intel i7-4770k](figures/win_scaling.png)
 
 As a bonus plot, just for the fun of it, we plot the scaling of `HashSet` and PLINQ `HashSet` across all platforms:
 
-![Scaling results from all platforms](cross_platform.png)
+![Scaling results from all platforms](figures/cross_platform.png)
 
 # Impact
 Going back to the original motivation, we can now apply the `HashSet` implementation to the two LINQ queries in `CompactHandler.cs`:
@@ -267,7 +268,7 @@ if (report.DeleteableVolumes.Any())
 Note that we have also added guards around the statements, as there is no need to perform the LINQ query if there are no elements in the `report.DeleteableVolumes` or `report.CompactableVolumes`.
 Looking at the profiling of the compacting process, we see that the time spent on the two LINQ queries has been reduced so that they are no longer listed in the call tree. Note also how the total profiling runtime went from 1 hour 5 minutes to 45 minutes; a 20 minute (31 %) reduction in total execution time.
 
-![Profiling 1m post new queries](profile_post.png)
+![Profiling 1m post new queries](figures/profile_post.png)
 
 And if we construct the same table as before, we see that the runtime has been reduced to:
 
