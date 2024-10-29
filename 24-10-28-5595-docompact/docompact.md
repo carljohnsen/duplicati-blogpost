@@ -225,7 +225,7 @@ First of all, this plot cements the problem: the original solution scales very p
 
 The `Intersect` method is quite a bit faster, which is interesting since it should semantically be performing the same operation as the original query, but the LINQ engine is able to optimize the `Intersect` method better.
 
-The `HashSet` implementation is even faster, which indicates that our hypothesis holds; the O(1) lookup time really benefits the query. Where the gap is largest (rightmost), the `HashSet` implementation is X times faster than the original implementation.
+The `HashSet` implementation is even faster, which indicates that our hypothesis holds; the O(1) lookup time really benefits the query. Where the gap is largest (rightmost), the `HashSet` implementation is >1000 times faster than the original implementation.
 
 Interestingly, the `FrozenSet` implementation is much slower and becomes progressively worse as the data size increases. This is likely due to the extra overhead of constructing the `FrozenSet` from the `HashSet`, which is not worth it for the potential performance gain when performing lookups for a single pass over the data.
 
