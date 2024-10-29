@@ -21,6 +21,11 @@ The following table shows the different machines mentioned:
 | Intel W5-2445 | 10-core 3.1 GHz (4.6) | 128 GB DDR5-4800 4-channel ~150 GB/s | Ubuntu 22.04 LTS | 8.0.110 |
 | Intel i7-4770k | 4-core 3.5 GHz (3.9) | 16 GB DDR3-1600 2-channel ~25 GB/s | Windows 10 x64 | 8.0.403 |
 
+# Identification
+I was stress testing Duplicati to identify performance issues that I could tackle as part of my quest to speed up Duplicati.
+One such issue that is known is that for small block sizes, identifying whether a data block has been seen before can take up a considerable amount of time due to the local database increasing in size.
+As such, I was trying to perform a backup under different parameter configurations, in particular with small block sizes.
+As I was tuning the `--dblock-size` (size of volumes) parameter, I noticed an extreme slowdown:
 
 | `dblock-size` | Runtime   | Relatively slower |
 |---------------|-----------|-------------------|
