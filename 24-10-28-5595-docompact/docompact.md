@@ -192,12 +192,16 @@ List<string> generate_strings(Random rng, int n) {
 We then generate two `List<string>` with a varying amount of overlap and varying data size and perform the timing:
 
 ```csharp
+// Percentage of overlap; 10, 20, ..., 100.
 for (int i = 1; i <= 10; i++)
 {
-    var overlap = i * 10; // Percentage
+    var overlap = i * 10;
+    // 10^1, 10^2, 10^3, 10^4 elements.
     for (int j = 1; j < 5; j++)
     {
-        int k_end = j == 4 ? 4 : 10; // Earlier stopping on the last iteration
+        // Earlier stopping on the last iteration to save time.
+        int k_end = j == 4 ? 4 : 10;
+        // Modifier to get smoother results: 10, 20, ..., 90, 100, 200, ...
         for (int k = 1; k < k_end; k++)
         {
             int n = (int) Math.Pow(10, j) * k;
