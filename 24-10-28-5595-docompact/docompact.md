@@ -229,6 +229,12 @@ To ensure that the results are not only for a MacBook Pro, we also ran the micro
 
 ![Scaling results from an AMD 1950X](t00_scaling.png)
 
+![Scaling results from an Intel i7-4770k](win_scaling.png)
+
+As a bonus plot, just for the fun of it, we plot the scaling of `HashSet` and PLINQ `HashSet` across all platforms:
+
+![Scaling results from all platforms](cross_platform.png)
+
 # Impact
 Going back to the original motivation, we can now apply the `HashSet` implementation to the two LINQ queries in `CompactHandler.cs`:
 
