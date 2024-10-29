@@ -39,7 +39,7 @@ Wow, more than 10 times slower, that seems excessive. Let's dive further by prof
 
 ![Profiler screenshot of 1m](figures/profile_1m.png)
 
-The first thing we notice is that it looks like the same type of workload shown in the 50m profiling is the same as the first 3rd of the 1 profiling. Thus, it looks like the 1m is doing something more. Diving further, we found that the issue was that due to `--dblock-size` and `--block-size` being equivalent, the backup run would perform a compact every time, due to the sizes always matching up. While the triggering of the compact was unintended, it pointed out a performance issue in the compacting process.
+The first thing we notice is that it looks like the same type of workload shown in the 50m profiling is the same as the first 3rd of the 1 profiling. Thus, it looks like the 1m is doing something more. Diving further, we found that the issue was that due to `--dblock-size` and `--blocksize` being equivalent, the backup run would perform a compact every time, due to the sizes always matching up. While the triggering of the compact was unintended, it pointed out a performance issue in the compacting process.
 
 Looking at the console output, we see that it stalls right after processing all of the blocks, and before performing the download, check and delete steps. This indicates that the issue is in the preliminary steps of the compacting process. Zooming into that part of the profiling highlights the issue:
 
