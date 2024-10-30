@@ -27,11 +27,11 @@ One such issue that is known is that for small block sizes, identifying whether 
 As such, I was trying to perform a backup under different parameter configurations, in particular with small block sizes.
 As I was tuning the `--dblock-size` (size of volumes) parameter, I noticed an extreme slowdown:
 
-| `dblock-size` | Runtime   | Relatively slower |
-|---------------|-----------|-------------------|
-| 50 MB         |  4:23.096 |            1.000x |
-|  5 MB         |  4:27.627 |            1.017x |
-|  1 MB         | 55:16.227 |           12.604x |
+| `dblock-size` |     Runtime | Relatively slower |
+|--------------:|------------:|------------------:|
+| 50 MB         |  `4:23.096` |          `1.000x` |
+|  5 MB         |  `4:27.627` |          `1.017x` |
+|  1 MB         | `55:16.227` |         `12.604x` |
 
 Wow, more than 10 times slower, that seems excessive. Let's dive further by profiling the exact same call with `--dblock-size` 50m and 1m:
 
@@ -294,11 +294,11 @@ Looking at the profiling of the compacting process, we see that the time spent o
 
 And if we construct the same table as before, we see that the runtime has been reduced to:
 
-| `dblock-size` | Runtime     | Relatively slower | Speedup compared to original |
-|---------------|-------------|-------------------|------------------------------|
-| 50 MB         | 00:04:40.67 |            1.000x |                       0.937x |
-|  5 MB         | 00:04:53.78 |            1.046x |                       0.910x |
-|  1 MB         | 00:42:44.82 |            9.138x |                       1.293x |
+| `dblock-size` |       Runtime | Relatively slower | Speedup compared to original |
+|--------------:|--------------:|------------------:|-----------------------------:|
+|         50 MB | `00:04:40.67` |          `1.000x` |                     `0.937x` |
+|          5 MB | `00:04:53.78` |          `1.046x` |                     `0.910x` |
+|          1 MB | `00:42:44.82` |          `9.138x` |                     `1.293x` |
 
 While there's still a problem to investigate, we've now sped up a part of the process, which shouldn't have been a bottleneck in the first place. Running a compact of a backup should now start up a lot faster when there are a lot of files.
 
