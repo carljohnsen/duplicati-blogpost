@@ -1,17 +1,18 @@
-# Speeding up `GenerateHeaderIV()` by up to TODO times
+# Speeding up `GenerateHeaderIV()` by up to 1.85 times
 
 # Introduction
 When profiling a backup with many small volumes, a large portion of the time spent went to generating the AES header IV. This blog post describes the problem, the solution, and the performance improvements. The solution has been merged in the [sharpaescrypt project](https://github.com/duplicati/sharpaescrypt/) in pull request [\#1](https://github.com/duplicati/sharpaescrypt/pull/1) and published in the nuget package [SharpAESCrypt 2.0.3](https://www.nuget.org/packages/SharpAESCrypt/2.0.3), which is now used in Duplicati in the merged pull request [\#5597](https://github.com/duplicati/duplicati/pull/5597).
 
 ## TL;DR
-The AES header IV generation was slow as it queried the operating system for a MAC address on every call (and it had an error, resulting in a default value being used). Fixing the error and caching the MAC address improved the performance by up to TODO times. This led to encryption being essentially free for this particular backup.
+The AES header IV generation was slow as it queried the operating system for a MAC address on every call (and it had an error, resulting in a default value being used). Fixing the error and caching the MAC address improved the performance by up to 1.85 times. This led to encryption being essentially free for this particular backup.
 
 | Method        | Time `small` (mm:ss.ms) | Time `large` (mm:ss.ms) |
 |---------------|------------------------:|------------------------:|
-| Before        |               00:25.268 |               09:57.002 |
-| New query     |       | 07:02.992 |
-| Cached MAC    |       | 05:22.970 |
-| No encryption |               00:13.859 |               05:00.736 |
+| Before        |     `00:27.120 (1.00x)` |     `09:58.841 (1.00x)` |
+| Bugfix        |     `03:02.125 (0.29x)` |     `82:17.057 (0.12x)` |
+| New query     |     `00:18.866 (1.43x)` |     `07:02.992 (1.41x)` |
+| Cached MAC    |     `00:15.182 (1.78x)` |     `05:22.970 (1.85x)` |
+| No encryption |     `00:13.859 (1.95x)` |     `05:00.736 (1.99x)` |
 
 ## Machine and Setup
 All of the plots and data shown here are performed on the MacBook specified in the following table. All of the benchmarks were run with `dotnet run -c Release`. Other things were running on the machine during the benchmarks, but the machine was not under heavy load, so the results should be valid. The remote resource is a local raspberry pi, but all of the measurements in this blog post is performed as a dry run and should only use the remote resource during initialization. The following folders were used for the benchmarks:
@@ -30,24 +31,24 @@ The following table shows the different machines mentioned:
 | AMD 1950X | (x86_64) 16-core 3.4 GHz (4.0) | 128 GB DDR4-3200 4-channel ~200 GB/s | Ubuntu 22.04 LTS | 8.0.110 |
 | Intel W5-2445 | (x86_64) 10-core 3.1 GHz (4.6) | 128 GB DDR5-4800 4-channel ~150 GB/s | Ubuntu 22.04 LTS | 8.0.110 |
 | Intel i7-4770k | (x86_64) 4-core 3.5 GHz (3.9) | 16 GB DDR3-1600 2-channel ~25 GB/s | Windows 10 x64 | 8.0.403 |
-TODO raspberry pi
+| Raspberry Pi 3 Model B | (ARM64) 4-core 1.2 GHz | 1 GB LPDDR2-900 ~6 GB/s | Raspbian 11 | 8.0.403 |
 
 # Identification
 The issue was identified when profiling a dry run of the `large` folder, where `GetGatewayAddresses()` (a call within `GenerateHeaderIV()`) was taking up 35.4 % of the time.
 
-![Profiling large start](images/profiling_large_start.png)
+![Profiling large start](figures/profiling.png)
 
-Which is further shown in the flame graph:
+Which is further shown in the flame graph (the blue boxes indicate the functions that call `GenerateHeaderIV()`):
 
-![Profiling large flame graph](images/profiling_large_flame_graph.png)
+![Profiling large flame graph](figures/flame_graph.png)
 
 To confirm that this is the issue, we try to perform a dry run on the two folders with and without encryption. The results are as follows:
 
 
 | Method        | Time `small` (mm:ss.ms) | Time `large` (mm:ss.ms) |
 |---------------|------------------------:|------------------------:|
-| Before        |               00:25.268 |               09:57.002 |
-| No encryption |               00:13.859 |               05:00.736 |
+| Before        |     `00:27.120 (1.00x)` |     `09:58.841 (1.00x)` |
+| No encryption |     `00:13.859 (1.95x)` |     `05:00.736 (1.99x)` |
 
 So we see that encryption is the majority of the time as disabling it almost halves the time spent. This also gives us a lower bound for how fast we can become. Let's dive into the [`SharpAESCript.SetupHelper.GenerateHeaderIV()`](https://github.com/duplicati/sharpaescrypt/blob/fd536c089d4a06366f15e22d645bebed59e835f7/src/SetupHelper.cs#L146) method (lines 146-173):
 
@@ -184,15 +185,15 @@ private ReadOnlyMemory<byte> GenerateHeaderIV()
 # Impact
 Going back to the original problem, we now gauge the impact of the changes. We run the benchmarks on the `small` and `large` folders, and compare the results:
 
-| Method | Time (mm:ss.ms) |
-|--------|-----------------|
-| Before | 9:57.002 |
-TODO bugfix
-| New query | 7:02.992 |
-| Cached MAC | 5:22.970 |
-| No encryption | 5:00.736 |
+| Method        | Time `small` (mm:ss.ms) | Time `large` (mm:ss.ms) |
+|---------------|------------------------:|------------------------:|
+| Before        |     `00:27.120 (1.00x)` |     `09:58.841 (1.00x)` |
+| Bugfix        |     `03:02.125 (0.29x)` |     `82:17.057 (0.12x)` |
+| New query     |     `00:18.866 (1.43x)` |     `07:02.992 (1.41x)` |
+| Cached MAC    |     `00:15.182 (1.78x)` |     `05:22.970 (1.85x)` |
+| No encryption |     `00:13.859 (1.95x)` |     `05:00.736 (1.99x)` |
 
-By using the cached MAC address, we have improved the performance by TODO-1.85x for this particular backup dry run, resulting in encryption being essentially free.
+By using the cached MAC address, we have improved the performance by 1.78-1.85x for this particular backup dry run, resulting in encryption being essentially free.
 
 # Conclusion
-In this blog post, we identified a performance issue with the AES header IV generation in Duplicati. By fixing a bug and caching the MAC address, we improved the performance by up to TODO times. This led to encryption being essentially free for this particular backup. The solution has been merged in the [sharpaescrypt project](https://github.com/duplicati/sharpaescrypt/) in pull request [\#1](https://github.com/duplicati/sharpaescrypt/pull/1) and published in the nuget package [SharpAESCrypt 2.0.3](https://www.nuget.org/packages/SharpAESCrypt/2.0.3), which is now used in Duplicati in the merged pull request [\#5597](https://github.com/duplicati/duplicati/pull/5597).
+In this blog post, we identified a performance issue with the AES header IV generation in Duplicati. By fixing a bug and caching the MAC address, we improved the performance by up to 1.85 times. This led to encryption being essentially free for this particular backup. The solution has been merged in the [sharpaescrypt project](https://github.com/duplicati/sharpaescrypt/) in pull request [\#1](https://github.com/duplicati/sharpaescrypt/pull/1) and published in the nuget package [SharpAESCrypt 2.0.3](https://www.nuget.org/packages/SharpAESCrypt/2.0.3), which is now used in Duplicati in the merged pull request [\#5597](https://github.com/duplicati/duplicati/pull/5597).
