@@ -1,6 +1,6 @@
 # Speeding up inner workings of `DoCompact()` by up to 1000x
 
-## Introduction
+# Introduction
 During the benchmarking of Duplicati under different parameter configurations, one particular step in the process took up a considerable amount of time (20 minutes out of the 65 minute total runtime). This blog post describes the identification of the problem, the solution, and the resulting impact. The solution has been merged in the pull request [\#5595](https://github.com/duplicati/duplicati/pull/5595).
 
 ## TL;DR
@@ -61,7 +61,7 @@ var fullyDeleteable = (from v in remoteList
 
 Timing the two queries using `Stopwatch` cements the issue: the two queries takes a combined ~15 minutes to perform.
 
-## Solution
+# Solution
 The issue with both of these queries is that they compare two `List<string>`, which means that the `select` will take `n` elements and perform the `Contains` operation, which is also O(n). This results in each of the two queries being O(n^2), which is not ideal.
 
 To address this issue, we tested several potential solutions:
@@ -302,5 +302,5 @@ And if we construct the same table as before, we see that the runtime has been r
 
 While there's still a problem to investigate, we've now sped up a part of the process, which shouldn't have been a bottleneck in the first place. Running a compact of a backup should now start up a lot faster when there are a lot of files.
 
-## Conclusion
+# Conclusion
 By identifying and optimizing the LINQ queries in the `DoCompact()` method, we achieved a significant performance improvement. The use of `HashSet` for faster lookups proved to be the most effective solution, reducing the total execution time by 31%. This optimization now results in the compacting process starting shortly after generating the report indicating which volumes to compact, where the majority of the work should lie when compacting. The solution has been merged in the pull request [\#5595](https://github.com/duplicati/duplicati/pull/5595).
