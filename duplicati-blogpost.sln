@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "24-10-28-5595-docompact", "24-10-28-5595-docompact", "{27D45471-595F-4C25-BDA1-2A89FB2AD1FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "compactlinq", "24-10-28-5595-docompact\microbenchmark\compactlinq.csproj", "{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "24-10-30-5597-aesheader", "24-10-30-5597-aesheader", "{340445B3-D13C-43C7-A0AE-96CACF651500}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "generate_iv", "24-10-30-5597-aesheader\microbenchmark\generate_iv.csproj", "{9302DF22-C1BD-4893-ACD1-164F5903B1D7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9302DF22-C1BD-4893-ACD1-164F5903B1D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9302DF22-C1BD-4893-ACD1-164F5903B1D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9302DF22-C1BD-4893-ACD1-164F5903B1D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9302DF22-C1BD-4893-ACD1-164F5903B1D7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{83EDFE3E-E6FC-4283-B1E8-F6C3E65A55DF} = {27D45471-595F-4C25-BDA1-2A89FB2AD1FC}
+		{9302DF22-C1BD-4893-ACD1-164F5903B1D7} = {340445B3-D13C-43C7-A0AE-96CACF651500}
+	EndGlobalSection
+EndGlobal
