@@ -1,7 +1,7 @@
 # Speeding up `GenerateHeaderIV()` by up to TODO times
 
 # Introduction
-When profiling a backup with many small volumes, a large portion of the time spent went to generating the AES header IV. This blog post describes the problem, the solution, and the performance improvements.
+When profiling a backup with many small volumes, a large portion of the time spent went to generating the AES header IV. This blog post describes the problem, the solution, and the performance improvements. The solution has been merged in the [sharpaescrypt project](https://github.com/duplicati/sharpaescrypt/) in pull request [\#1](https://github.com/duplicati/sharpaescrypt/pull/1) and published in the nuget package [SharpAESCrypt 2.0.3](https://www.nuget.org/packages/SharpAESCrypt/2.0.3), which is now used in Duplicati in the merged pull request [\#5597](https://github.com/duplicati/duplicati/pull/5597).
 
 ## TL;DR
 The AES header IV generation was slow as it queried the operating system for a MAC address on every call (and it had an error, resulting in a default value being used). Fixing the error and caching the MAC address improved the performance by up to TODO times. This led to encryption being essentially free for this particular backup.
@@ -119,14 +119,67 @@ The second step is to speed up the MAC address query itself. To do so, we set up
 8. **Mac specific `ifconfig` regex query**: using a regex query on the output of `ifconfig` to get the MAC address.
 9. **LINQ but choosing the first MAC address that's not empty or pure 0's**: rather than filtering on device type or status, we just take the first available MAC address.
 
-Running with 100 warmup runs and 1000 iterations, we get the following results across platforms:
+Running with 100 warmup runs and 1000 iterations, we get the following (sorted) results on the Mac:
 
-![MAC address query benchmark](images/mac_address_query_benchmark.png)
+![Raw results Mac](figures/mac_raw.png)
 
-TODO flavortext
+Alright, let's discard 10 % of the slowest and fastest runs:
+
+![Filtered results Mac](figures/mac_trimmed.png)
+
+Here we see that 2, 3 (the two original variations), and 8 (regex based platform dependant) are the slowest methods, so let's discard those to zoom in on the contenders:
+
+![Filtered results Mac](figures/mac_trimmed_excluded.png)
+
+There isn't really a clear winner across the board, as some of them beat `mac_1`, which is the isolated `GetAllNetworkInterfaces()` method, indicating some other hidden overhead, such as garbage collection or other system calls. So rather than choosing the method based on the microbenchmark, we choose based on the nature of the methods. We choose 9, as 1 isn't a replacement, 4, 5 and 6 all filter the devices (we just want any MAC address), and 7 is limited to only ethernet and wifi, of which there technically might not be one (or at least it could be wrongly classified).
+
+To be sure that this choice is not Mac specific, we run the same microbenchmark across the other machines (with 2, 3 and 8 excluded):
+
+![Cross platform microbenchmark results](figures/cross_platform.png)
+
+Here we see that the results are consistent across the different machines, all being relatively close to each other. An interesting observation is that the two ARM machines are a lot slower than the x86_64 machines (notice the logarithmic y-scale), which is likely due to the different implementations of the `GetAllNetworkInterfaces()` method. It's also worth noting that Intel seems to be faster than AMD, which is also surprising.
 
 ## Step 3 - Caching the MAC address
+The last optimization is to cache the MAC address, as it shouldn't change during a backup. We add a `static readonly` field to the `Constants` class to store the MAC address. It cannot be a constant, as it's a runtime value, but it can be `readonly` as it's only set once. To ensure that it won't crash, we add `try` / `catch` blocks around the initialization. Since this is only called once during the lifetime of the application, the added overhead is negligible.
 
+```csharp
+private static byte[] GetFirstMacAddress()
+{
+    byte[] default_mac = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab];
+    try {
+        return System.Net.NetworkInformation.NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Select(ni => { try { return ni.GetPhysicalAddress().GetAddressBytes(); } catch { return []; } })
+                .Where(mac => mac.Length > 0 && !mac.All(b => b == 0))
+                .FirstOrDefault(default_mac);
+    } catch {
+        return default_mac;
+    }
+}
+
+internal static readonly ulong FIRST_MAC_ADDRESS = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+[
+    .. GetFirstMacAddress(),
+    .. new byte[2],
+]);
+```
+
+With this change, we can now replace the MAC address query in `GenerateHeaderIV()` with the cached value:
+
+```csharp
+private ReadOnlyMemory<byte> GenerateHeaderIV()
+{
+    // Build some initial entropy
+    var iv = new byte[Constants.IV_SIZE];
+    BinaryPrimitives.WriteInt64BigEndian(iv.AsSpan(), DateTime.Now.Ticks);
+    BinaryPrimitives.WriteUInt64BigEndian(iv.AsSpan(8), Constants.FIRST_MAC_ADDRESS);
+
+    // The IV is generated by repeatedly hashing the IV with random data.
+    // By using the MAC address and the current time, we add some initial entropy,
+    // which reduces risks from a vulnerable or tampered PRNG.
+    return DigestRandomBytes(iv, Constants.IV_GENERATION_REPETITIONS);
+}
+```
 
 # Impact
 Going back to the original problem, we now gauge the impact of the changes. We run the benchmarks on the `small` and `large` folders, and compare the results:
@@ -134,8 +187,12 @@ Going back to the original problem, we now gauge the impact of the changes. We r
 | Method | Time (mm:ss.ms) |
 |--------|-----------------|
 | Before | 9:57.002 |
+TODO bugfix
 | New query | 7:02.992 |
 | Cached MAC | 5:22.970 |
 | No encryption | 5:00.736 |
 
+By using the cached MAC address, we have improved the performance by TODO-1.85x for this particular backup dry run, resulting in encryption being essentially free.
+
 # Conclusion
+In this blog post, we identified a performance issue with the AES header IV generation in Duplicati. By fixing a bug and caching the MAC address, we improved the performance by up to TODO times. This led to encryption being essentially free for this particular backup. The solution has been merged in the [sharpaescrypt project](https://github.com/duplicati/sharpaescrypt/) in pull request [\#1](https://github.com/duplicati/sharpaescrypt/pull/1) and published in the nuget package [SharpAESCrypt 2.0.3](https://www.nuget.org/packages/SharpAESCrypt/2.0.3), which is now used in Duplicati in the merged pull request [\#5597](https://github.com/duplicati/duplicati/pull/5597).
