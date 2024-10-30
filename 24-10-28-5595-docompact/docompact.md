@@ -45,7 +45,7 @@ Looking at the console output, we see that it stalls right after processing all 
 
 ![Profiler screenshot highlighting the stall](figures/profile_docompact.png)
 
-Here we see that the majority of the time spent is spent on LINQ and Collections operations: 90.4 % in the bottom right corner spent in `ToList()`. If we look into the code, we see that the two LINQ queries (`Duplicati/Library/Main/Operation/CompactHandler.cs` previously lines 131-133,144-146):
+Here we see that the majority of the time spent is spent on LINQ and Collections operations: 90.4 % in the bottom right corner spent in `ToList()`. If we look into the code, we see that the two LINQ queries ([`Duplicati.Library.Main.Operation.CompactHandler.cs:131`](https://github.com/duplicati/duplicati/blob/e31869992dc1f34dbb8e1620b943b83deff0df90/Duplicati/Library/Main/Operation/CompactHandler.cs#L131) lines 131-133,144-146):
 
 ```csharp
 var fullyDeleteable = (from v in remoteList
