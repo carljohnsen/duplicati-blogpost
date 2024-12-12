@@ -1,6 +1,6 @@
 # Check if the Duplicati.CommandLine resides in $PATH or $DUPLICATI
 if [ -z "$DUPLICATI" ]; then
-    if ! command -v Duplicati.CommandLine &> /dev/null; then
+    if ! command -v Duplicati.CommandLine 2>&1 > /dev/null; then
         echo "Duplicati.CommandLine not found in \$PATH nor \$DUPLICATI"
         exit 1
     fi
@@ -8,7 +8,7 @@ if [ -z "$DUPLICATI" ]; then
 fi
 
 # Check if dotnet is installed
-if ! command -v dotnet &> /dev/null; then
+if ! command -v dotnet 2>&1 > /dev/null; then
     echo "dotnet not found in \$PATH"
     exit 1
 fi
@@ -17,7 +17,7 @@ fi
 if [ ! -d "data_small" ] || [ ! -d "data_large" ]; then
     # Check if the $DUPLICATI_TEST command resides in $PATH or $DUPLICATI_TEST
     if [ -z "$DUPLICATI_TEST" ]; then
-        if ! command -v TestDataGenerator &> /dev/null; then
+        if ! command -v TestDataGenerator 2>&1 > /dev/null; then
             echo "TestDataGenerator not found in \$PATH nor \$DUPLICATI_TEST"
             exit 1
         fi
