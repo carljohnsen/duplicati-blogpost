@@ -6,7 +6,7 @@ As Duplicati is meant as a backup program that always runs in the background, it
 ## TL;DR
 Inserting sleeps into the `DataBlockProcessor` to limit the CPU utilization is a simple and effective way to limit the CPU utilization of Duplicati during backup operations. This can be controlled using the `--cpu-intensity` parameter, which is a value between 1 and 10, where 10 is no limits and 1 is the most restrictive.
 
-![Collective plot of the feature across operating systems.](figures/collective.png)
+![Benchmark results from the Mac](figures/mac.png)
 
 ## Machine setup
 The following table shows the different machines mentioned:
@@ -40,8 +40,22 @@ Considering these approaches, the first one (1.) is the most straightforward and
 Choosing the insertion point of the sleeps is crucial; we want to place it where most of the CPU time is spent, as hindering it there will have the most significant effect. The `DataBlockProcessor` performing compression is a good candidate, as it is a CPU-bound operation that is run in parallel. So we'll add a `StopWatch` to keep track of time spent doing actual work, and if it exceeds the allowed time, we'll sleep for one second minus the allowed time. Allowed time is scaled by a new configuration option, `--cpu-intensity`, which is multiplied by 100 ms. E.g. `--cpu-intensity=3` translates to an allowed time of 300 ms, for which a process will sleep for 700 ms, if it's execution time exceeds 300 ms. By not including the time spent computing in the equation for time to spend sleeping, we can ensure that the process will actually sleep, even though it's execution time exceeds one second.
 
 # Benchmark
-To benchmark the effect of this feature, we setup four benchmarks: one with many small files, one with a few large files, and a dry run of both to remove waiting for the filesystem and in turn maximize CPU pressure. The benchmarks were run on the machines mentioned in the table above. Each of them are run with varying `--cpu-intensity` values, ranging from 1 to 10. They are the results of performing 5 warmup runs and 10 benchmark runs. To gauge the effects we report two plots: one with the time spent performing the backup and one with the CPU utilization during the backup.
+To benchmark the effect of this feature, we setup two benchmarks: one with many small files and one with a few large files. The benchmarks were run on the machines mentioned in the table above. Each of them are run with varying `--cpu-intensity` values, ranging from 1 to 10. They are the results of performing 1 warmup runs and 10 benchmark runs. To gauge the effects we report two plots: one with the time spent performing the backup and one with the CPU utilization during the backup.
 
-On UNIX systems, we run the `time -p <command>` command to measure the time spent performing the backup. The CPU utilization is then computed from `(user + sys) / real`. On Windows systems, we use the PowerShell command `Measure-Command { <command> }` to measure both the time spent and the CPU utilization. Note that the CPU utilization here becomes >100% if the program uses more than one core.
+On UNIX systems, we run the `time -p <command>` command to measure the time spent performing the backup. It reports `real` (the wall time in seconds spent), `user` time spent doing work in userspace, and `sys` time spent executing kernel level workThe CPU utilization is then computed from `(user + sys) / real`. On Windows systems, we use the PowerShell command `Measure-Command { <command> }` to measure both the time spent and the CPU utilization. Note that the CPU utilization here becomes >100% if the program uses more than one core.
 
-The benchmarks can be seen
+The benchmarks can be found [here](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-cputhrottle/benchmark). If we look at the results from running the benchmark on the MacBook:
+
+![Benchmark results from the Mac](figures/mac.png)
+
+We see that 1. the time spent performing the backup increases with lower `--cpu-intensity` values, and 2. the CPU utilization decreases with lower `--cpu-intensity` values. This is expected, as the CPU is throttled to spend less time doing work, and more time sleeping. An interesting observation is that the `user+sys` line in the plot remains somewhat constant across intensity values, indicating that the CPU is not spending more time doing work, but rather sleeping, as expected. Interestingly, we also see that as the data size increases, the linear scaling of the CPU utilization
+
+The same trend can be observed on the other machines and operating systems as well:
+
+![Benchmark results from the AMD 7975WX](figures/t02.png)
+![Benchmark results from the AMD 1950X](figures/t00.png)
+![Benchmark results from the Intel W5-2445](figures/iw5.png)
+![Benchmark results from the Intel i7-4770k](figures/win.png)
+
+# Conclusion
+Inserting sleeps into the `DataBlockProcessor` to limit the CPU utilization is a simple and effective way to limit the CPU utilization of Duplicati during backup operations. This can be controlled using the `--cpu-intensity` parameter, which is a value between 1 and 10, where 10 is no limits and 1 is the most restrictive. The benchmarks show that the time spent performing the backup increases with lower `--cpu-intensity` values, and the CPU utilization decreases with lower `--cpu-intensity` values. This is expected, as the CPU is throttled to spend less time doing work, and more time sleeping. The feature is available in the [Canary build 2.0.109](https://github.com/duplicati/duplicati/releases/tag/v2.0.9.109_canary_2024-11-06) onwards.
