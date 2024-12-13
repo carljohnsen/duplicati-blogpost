@@ -54,7 +54,7 @@ foreach ($f in $fs) {
             & $args[0] delete $DUPLICATI_BACKUP_DIR --passphrase=a --allow-full-removal --version=0
 
             # Output the times to a file
-            write-output "real $($realTime.TotalSeconds) user $($userTime.TotalSeconds) sys $($sysTime.TotalSeconds)`n" | Out-File -FilePath "times\win-f$intensity.time"
+            write-output "real $($realTime.TotalSeconds) user $($userTime.TotalSeconds) sys $($sysTime.TotalSeconds)`n" | Out-File -Append -FilePath "times\win-$f$intensity.time"
         }
     }
 }
