@@ -1,7 +1,7 @@
 # Feature: taming the CPU utilization of Duplicati during backup.
 
 # Introduction
-As Duplicati is meant as a backup program that always runs in the background, it is beneficial to have a way to limit the CPU utilization of the program to limit intrusive impact on the system ([related forum post](https://forum.duplicati.com/t/cpu-load-is-too-high/19015/13), [related issue](https://github.com/duplicati/duplicati/issues/2563)). This blog post outlines the new feature of adding CPU pressure limits to Duplicati. This feature has been merged in pull request [\#5622](https://github.com/duplicati/duplicati/pull/5622) and is available in the [Canary build 2.0.109](https://github.com/duplicati/duplicati/releases/tag/v2.0.9.109_canary_2024-11-06) onwards.
+As Duplicati is meant as a backup program that always runs in the background, it is beneficial to have a way to limit the CPU utilization of the program to limit intrusive impact on the system ([related forum post](https://forum.duplicati.com/t/cpu-load-is-too-high/19015), [related issue](https://github.com/duplicati/duplicati/issues/2563)). This blog post outlines the new feature of adding CPU pressure limits to Duplicati. This feature has been merged in pull request [\#5622](https://github.com/duplicati/duplicati/pull/5622) and is available in the [Canary build 2.0.109](https://github.com/duplicati/duplicati/releases/tag/v2.0.9.109_canary_2024-11-06) onwards.
 
 ## TL;DR
 Inserting sleeps into the `DataBlockProcessor` to limit the CPU utilization is a simple and effective way to limit the CPU utilization of Duplicati during backup operations. This can be controlled using the `--cpu-intensity` parameter, which is a value between 1 and 10, where 10 is no limits and 1 is the most restrictive.
@@ -44,7 +44,7 @@ To benchmark the effect of this feature, we set up two benchmarks: one with many
 
 On UNIX systems, we run the `time -p <command>` command to measure the time spent performing the backup. It reports `real` (the wall time in seconds spent), `user` time spent doing work in userspace, and `sys` time spent executing kernel level work. The CPU utilization is then computed from `(user + sys) / real`. On Windows systems, we use the PowerShell command `Measure-Command { <command> }` to measure both the time spent and the CPU utilization. Note that the CPU utilization here can exceed 100% if the program uses more than one core.
 
-The benchmarks can be found [here](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-cputhrottle/benchmark). If we look at the results from running the benchmark on the MacBook:
+The benchmarks can be found [here](https://github.com/carljohnsen/duplicati-blogpost/tree/main/24-12-15-5622-cputhrottle/benchmark). If we look at the results from running the benchmark on the MacBook:
 
 ![Benchmark results from the Mac](figures/mac.png)
 
