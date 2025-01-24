@@ -1,7 +1,7 @@
-# Speeding up the restore process
+# Speeding up the restore operation
 We start by backing up pre-sc-ad to a local folder, as this should remove the upload/download overhead.
 
-This blog post describes the reworked restore process.
+This blog post describes the reworked restore flow.
 
 It has been merged in [PR #5728](https://github.com/duplicati/duplicati/pull/5728).
 
@@ -10,9 +10,9 @@ It has been part of the releases since [Duplicati 2.1.0.103](https://github.com/
 If any issues arise with the new flow, please report them here on the forum and the legacy flow can still be used instead by supplying the option `--restore-legacy=true`.
 
 ## TL:DR;
-The restore process is slow because it is not parallelized. The restore process is rewritten to be parallelized, and the restore time is reduced by X times.
+The restore flow is slow because it is not parallelized. The restore flow is rewritten to be parallelized, and the restore time is reduced by X times.
 
-A noteworthy new behaviour is that the post restore verification has been removed, as it is now performed on the fly during the restore process.
+A noteworthy new behaviour is that the post restore verification has been removed, as it is now performed on the fly during the restore flow.
 
 - Graph showing the new process network
 - Some graph showing the time reduction
@@ -46,9 +46,9 @@ We'll be using the following terms in this post:
 - _Process_: A CSP process that sequentially performs a specific task, only sharing data through channels. A process can be a thread, a coroutine, or any other form of concurrent execution.
 - _Channel_: A CSP channel that is used to communicate between processes. A message can be any object. A channel can be unbuffered, meaning a synchronous/rendezvous channel where the sender and receiver must be ready to communicate, or buffered, meaning an asynchronous channel where the sender can send a message without the receiver being ready to receive it up to a certain buffer size.
 
-# The old restore process
+# The old restore flow
 Before describing the new flow, there's value in understanding the old restore flow, its strengths and weaknesses.
-The legacy restore process flow is as follows:
+The legacy restore flow is as follows:
 
 1. Combine file filters.
 2. Open or restore the local database.
@@ -83,7 +83,7 @@ The legacy restore process flow is as follows:
 
 The flow is visualized in the following diagram:
 
-
+- TODO
 
 This flow has several benefits:
 - There is a clear separation of the different steps.
@@ -94,35 +94,139 @@ This flow has several benefits:
 
 It has the following drawbacks:
 - The separation of steps can lead to multiple passes over the same data, moving in and out of memory and disk.
-- Each step is sequential, thus not fully utilizing system resources or leveraging overlapping execution. This results in the process potentially being very slow.
+- Each step is sequential, thus not fully utilizing system resources or leveraging overlapping execution. This results in the flow potentially being very slow.
 - Block writes are scattered across disk, leading to potentially slow writes, as disks favor sequential access patterns.
 
 
+# The new restore flow
+The new restore flow tackles the problems of the legacy restore flow while retaining as many of its benefits as possible.
 
-# The new restore process
-Different solutions to the problems presented in the old restore process.
-Final solution.
+## Scattered block writes
+Instead of minimizing the number of remote downloads, we'll shift the focus from volume centered to being file centered.
+This shift results in blocks being written sequentially to disk for each file, which is a more disk-friendly access pattern.
+The major problem with this approach is that each file does not know how deduplicated blocks are shared between files.
+As such, multiple files would download the same volume multiple times, alongside decryption and decompression; a lot of redundant work.
+
+To solve this, we introduce a new cache system that keeps track of which blocks are needed for each file and ensures that each block is only downloaded, decrypted, and decompressed once.
+The cache system is split into two parts: a volume cache and a block cache.
+The volume cache keeps track of which volumes are needed for each file and ensures that each volume is only downloaded once.
+It is decrypted and stored on disk in a temporary folder, until it is no longer needed at which point it is deleted.
+The block cache keeps track of how many times a block is needed throughout the restoration flow, and ensures that each block is only decompressed once.
+If it is needed more than once, it is stored in a dictionary in memory, until it is no longer needed at which point it is deleted.
+
+While the reads from the remote storage are still scattered, they don't (usually) suffer as much, given that the dblock size is many times larger than the block size of a backup.
+Furthermore, the extraction of blocks from the volumes are performed in memory where random access is much faster.
+
+The only problem that this approach introduces is that the cache system needs to be managed, which can be a complex task.
+For systems with limited memory and disk space, we provide tunable parameters to control the size of the caches.
+This allows the user to trade off between speed and resource usage.
+If the volume cache is small, the system will download volumes multiple times.
+For setups with a high-speed connection to the remote storage, this may be a good trade-off.
+If the block cache is small, the system will decompress blocks multiple times.
+For setups with limited memory, this may be a good trade-off, since the restore operation is still able to complete, albeit slower than with the caches fully utilized.
+
+However, these caches are only really utilized when there's high deduplication between files, so the caches shouldn't grow too large.
+
+Future work would analyze the deduplication of the blocks and the volumes across files, to further optimize the cache utilization by restoring the files in order to maximize sharing.
+The worst case can occur when the order of files is such that the caches don't get auto evicted and the system runs out of memory or disk space.
+The aforementioned future work would alleviate this problem.
+However, in our testing (futher down in this post) this was rarely an issue.
+
+## Parallelization and overlapping execution
+To fully utilize the system resources, we parallelize the restore flow and allow for overlapping execution of the different steps.
+This is done by reworking the core steps 4 onwards.
+In particular, most of the time spent in the legacy flow is step 10 (downloading, decrypting, decompressing, and patching blocks) and step 12 (verifying the restored files).
+
+The new flow is as follows:
+1. Combine file filters.
+2. Open or restore the local database.
+3. Verify the remote files;
+    1. Get the list of remote volumes.
+    2. Verify that there are no missing or unexpected extra volumes.
+4. Start the network of processes.
+    1. The filelister process lists the files that need to be restored.
+    2. The fileprocessor will restore the files.
+        1. Receive a filename
+        2. Figure out which blocks are needed for the file.
+        3. Check how many blocks the target file already has, as they don't need to be restored.
+        4. Check how many blocks the source file has, as they can be copied directly.
+        5. Request the missing blocks. The blocks are requested in a burst to increase throughput as the network is more likely to be kept busy with requests.
+        6. Patch the target file with the blocks received blocks.
+        7. Verify that the target file matches the expected size and hash.
+        8. Request the metadata blocks.
+        9. Restore the metadata.
+    3. The block manager will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
+        1. If the requested block is in the cache (in memory), it will respond with the block from the cache.
+        2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests are lower than the amount of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
+    4. The volume manager will respond to volume requests, caching the volumes on disk. The block manager is keeping count of the number of times each block is needed and will notify the volume manager when a volume can be evicted from the cache.
+        1. If the volume is in the cache (on disk), it will request the block to be extracted from the volume.
+        2. If the volume is not in the cache (on disk), it will request the volume to be downloaded. Once the volume is downloaded, it will request the block to be extracted from the volume.
+    5. The volume downloader will download the volume.
+        1. Receive a volume request.
+        2. Download the volume.
+        3. Send the downloaded volume to the volume decryptor.
+    6. The volume decryptor will decrypt the volume.
+        1. Receive a volume.
+        2. Decrypt the volume.
+        3. Send the decrypted volume to the volume cache.
+    7. The volume decompressor will decompress the volume.
+        1. Receive a volume.
+        2. Extract the block from the volume.
+        3. Verify that the block matches the expected size and hash.
+        4. Send the extracted block to the block cache.
+
+TODO verify that the unencrypted volumes actually reside on disk and not in memory.
+
+The flow is visualized in the following diagram:
+
+- TODO
+
+With this setup, each process in step 4 can run asynchronously, allowing for overlapping execution.
+Furthermore, some of the processes can run in parallel, allowing for using more system resources at the bottleneck steps.
+In particular, the core work of downloading, decrypting, decompressing, and patching blocks is parallelized and can be scaled individually to match the system resources.
+
+A major benefit is that the post verification step has been removed as it's now performed on the fly during the restore flow. This was separated in the legacy flow as the block writes were scattered, meaning each file was not ensured fully restored until the end of the flow. In the new flow, each file processor knows excatly when each file is fully restored and can thus verify while it is being restored.
+
+The whole network shuts down starting at the filelister, once it runs out of files to request.
+Then each fileprocessor shuts down when trying to request a file from the filelister, which is no longer available.
+Once all fileprocessors have shut down, the block cache signals the volume cache to shut down, which in turn shuts downn the volume downloaders, volume decryptors, and volume decompressors.
+Once that subnetwork has shut down, the block cache shuts down, which is the final process to shut down.
+
+This new flow alleviates the problems of the legacy flow, while retaining most of its benefits:
+- While the steps are no longer performed in a clear separated sequence, each step is still separated into a process, allowing for a clear separation of concerns.
+- The steps are parallelized, allowing for overlapping execution and full utilization of system resources.
+- The block writes are sequential to a file, leading to a more disk-friendly access pattern.
+- The cache system ensures that each block and volume is only downloaded, decrypted, and decompressed once(assuming that cache entries aren't evicted too early due to memory limitations).
+- The verification is now performed integrated into the restore flow.
+
+It has the following drawbacks:
+- The flow is more complex, as it is now a network of processes that communicate through channels.
+- The cache system needs to be managed, which can be a complex task.
+- The flow is less stable, as it is a new implementation that hasn't been tested as thoroughly as the legacy flow.
 
 ## Tunable parameters
-- Number of FileProcessors
-- Number of Volume downloaders
-- Number of Volume uncompressors
-- Size of the Volume cache
-- Size of the Block cache
+TODO volume manager doesn't use the caching parameters
 
-### Example of tuning the restore process for maximum throughput
-
-## Caching strategy
-### Volume cache
-Resides on disk. Only the volumes that contain blocks still needing to be restored are kept in cache. Volumes can be evicted which triggers a re-download of the volume if needed.
-
-### Block cache
-Resides in memory. Only the blocks that are still needed to be restored are kept in cache. Blocks can be evicted which triggers a re-decompression of the block if needed.
+This new flow introduces several tunable parameters to control parallelism, the size of the caches, and toggling the legacy flow:
+### Cache
+- `--restore-cache-max=4gb`: The size (in bytes) of the block cache. The default is 4 GiB. If the cache is full, the cache will be compacted according to the strategy of [MemoryCache](https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.caching.memory.memorycache).
+- `--restory-cache-evict=50`: The percentage of the block cache that will be evicted when the cache is full. The default is 50%.
+### Parallelism
+- `--restore-file-processors=n_cores/2`: The number of file processors to run in parallel. The default is half the number of cores available on the machine.
+- `--restore-volume-decompressors=n_cores/2`: The number of volume decompressors to run in parallel. The default is half the number of cores available on the machine.
+- `--restore-volume-decryptors=n_cores/2`: The number of volume decryptors to run in parallel. The default is half the number of cores available on the machine.
+- `--restore-volume-downloaders=n_cores/2`: The number of volume downloaders to run in parallel. The default is half the number of cores available on the machine.
+### General
+- `--restore-legacy=false`: Toggles whether to use the legacy restore flow. The default is false, enabling the new restore flow.
+- `--restore-preallocate-size=false`: Toggles whether to preallocate the target files. The default is false, not preallocating the target files. This can benefit the restore speed on some systems, as it hints the size to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
+- `--internal-profiling=false`: Toggles whether keep internal timers of each part of the restore flow. The default is false, not keeping internal timers. This is useful for tuning the parallelism parameters as the bottleneck processes can be identified.
 
 ### Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
 
 # Results
 Much fast
+
+## Example of tuning the restore process for maximum throughput
 
 # Conclusion
 It's great - buy now.
