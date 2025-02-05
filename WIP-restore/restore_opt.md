@@ -279,7 +279,58 @@ The new flow is as follows:
 
 The flow is visualized in the following diagram:
 
-- TODO
+```mermaid
+flowchart LR;
+    1["Combine filters"];
+    2["Open local DB"];
+    3["Verify local files"];
+
+    subgraph VERIF[" "]
+        3_1["Get list of Volumes"];
+        3_2["Verify volume count"];
+
+        3-->3_1;
+        3_1-->3_2;
+        3_2-->3;
+    end;
+
+    1-->2;
+    2-->3;
+    3-->NETW;
+
+    subgraph NETW["Concurrent network"]
+        direction TB;
+
+        4_1["File Lister"];
+        4_2@{ shape: processes, label: "File Processor" };
+        subgraph BLOCKMAN["Block manager "];
+            4_3_blockhandler@{ shape: processes, label: "Block Handler" };
+            4_3_volumeconsumer["Volume Consumer"];
+            4_3_cache["Block Cache"];
+
+            4_3_volumeconsumer --> 4_3_cache;
+            4_3_blockhandler --> 4_3_cache;
+            4_3_cache --> 4_3_blockhandler;
+        end;
+        subgraph VOLALIGN[" "];
+            4_4["Volume Manager"];
+            4_7@{ shape: processes, label: "Volume Decompressor" };
+        end;
+        style VOLALIGN stroke:none;
+        4_5@{ shape: processes, label: "Volume Downloader" };
+        4_6@{ shape: processes, label: "Volume Decryptor" };
+
+        4_1 --> 4_2;
+        4_2 --> 4_3_blockhandler;
+        4_3_blockhandler --> 4_2;
+        4_3_cache --> 4_4;
+        4_4 --> 4_5;
+        4_5 --> 4_6;
+        4_6 --> 4_4;
+        4_4 --> 4_7;
+        4_7 --> 4_3_volumeconsumer;
+    end;
+```
 
 With this setup, each process in step 4 can run asynchronously, allowing for overlapping execution.
 Furthermore, some of the processes can run in parallel, allowing for using more system resources at the bottleneck steps.
