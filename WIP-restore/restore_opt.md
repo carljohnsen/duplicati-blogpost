@@ -88,8 +88,99 @@ The legacy restore flow is as follows:
     3. Check that the hash and size matches.
 
 The flow is visualized in the following diagram:
+TODO left-right (LR) or top-down (TD)?
+TODO does this properly reflect that the flow is sequential? Or rather, how do I visualize concurrency later on?
 
-- TODO
+```mermaid
+flowchart LR;
+    1["Combine filters"];
+    2["Open local DB"];
+    3["Verify local files"];
+    4["Prepare block list"];
+    5["Create directories"];
+    6["Scan target files"];
+    7["Scan source files"];
+    8["Patch with local blocks"];
+    9["Get volume list"];
+    10["Iterate volumes"];
+    11["Restore metadata"];
+    12["Verify restored files"];
+
+    subgraph VERIF[" "]
+        3_1["Get list of Volumes"];
+        3_2["Verify volume count"];
+
+        3-->3_1;
+        3_1-->3_2;
+        3_2-->3;
+    end;
+
+    1-->2;
+    2-->3;
+    3-->4;
+    4-->5;
+    5-->6;
+    6-->7;
+    7-->8;
+    8-->9;
+    9-->10;
+
+    subgraph VOLS[" "]
+        10_1["Download volume"];
+        10_2["Decrypt volume"];
+        10_3["Decompress volume"];
+        10_4["Iterate blocks"];
+
+        10-->10_1;
+        10_1-->10_2;
+        10_2-->10_3;
+        10_3-->10_4;
+        10_4-->10;
+
+        subgraph BLOCKS[" "];
+            10_4_1["Extract block"];
+            10_4_2["Check size and hash"];
+            10_4_3["Patch target files with block"];
+
+            10_4-->10_4_1;
+            10_4_1-->10_4_2;
+            10_4_2-->10_4_3;
+            10_4_3-->10_4;
+        end;
+    end;
+
+    10-->11;
+
+    subgraph META[" "];
+      11_1["Download metadata volume"];
+      11_2["Decrypt volume"];
+      11_3["Decompress volume"];
+      11_4["Extract metadata block"];
+      11_5["Check size and hash"];
+      11_6["Restore metadata"];
+
+      11-->11_1;
+      11_1-->11_2;
+      11_2-->11_3;
+      11_3-->11_4;
+      11_4-->11_5;
+      11_5-->11_6;
+      11_6-->11;
+    end;
+
+    11-->12;
+
+    subgraph POSTVERIFY[" "];
+      12_1["Read target file"];
+      12_2["Compute hash"];
+      12_3["Check hash and size"];
+
+      12-->12_1;
+      12_1-->12_2;
+      12_2-->12_3;
+      12_3-->12;
+    end;
+```
 
 This flow has several benefits:
 
