@@ -12,9 +12,7 @@ If any issues arise with the new flow, please report them here on the forum and 
 
 ## TL:DR;
 
-The restore flow is slow because it is not parallelized. The restore flow is rewritten to be parallelized, and the restore time is reduced by X times.
-
-A noteworthy new behaviour is that the post restore verification has been removed, as it is now performed on the fly during the restore flow.
+The legacy restore flow is slow because it is performed sequentially. The restore flow is rewritten to leverage concurrent execution, reducing the restore time by X times on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
 
 - Graph showing the new process network
 - Some graph showing the time reduction
@@ -89,10 +87,9 @@ The legacy restore flow is as follows:
 
 The flow is visualized in the following diagram:
 TODO left-right (LR) or top-down (TD)?
-TODO does this properly reflect that the flow is sequential? Or rather, how do I visualize concurrency later on?
 
 ```mermaid
-flowchart LR;
+flowchart TD;
     1["Combine filters"];
     2["Open local DB"];
     3["Verify local files"];
@@ -245,7 +242,7 @@ The new flow is as follows:
 3. Verify the remote files;
    1. Get the list of remote volumes.
    2. Verify that there are no missing or unexpected extra volumes.
-4. Start the network of processes.
+4. Start the network of concurrent processes.
    1. The filelister process lists the files that need to be restored.
    2. The fileprocessor will restore the files.
       1. Receive a filename
@@ -299,18 +296,20 @@ flowchart LR;
     3-->NETW;
 
     subgraph NETW["Concurrent network"]
-        direction TB;
+        direction BT;
 
         4_1["File Lister"];
         4_2@{ shape: processes, label: "File Processor" };
         subgraph BLOCKMAN["Block manager "];
             4_3_blockhandler@{ shape: processes, label: "Block Handler" };
             4_3_volumeconsumer["Volume Consumer"];
+            %%TODO differentiate between function call and process
+            %%style 4_3_volumeconsumer fill:#f9f;
             4_3_cache["Block Cache"];
 
-            4_3_volumeconsumer --> 4_3_cache;
-            4_3_blockhandler --> 4_3_cache;
-            4_3_cache --> 4_3_blockhandler;
+            4_3_volumeconsumer --10--> 4_3_cache;
+            4_3_blockhandler --3--> 4_3_cache;
+            4_3_cache --11--> 4_3_blockhandler;
         end;
         subgraph VOLALIGN[" "];
             4_4["Volume Manager"];
@@ -320,23 +319,29 @@ flowchart LR;
         4_5@{ shape: processes, label: "Volume Downloader" };
         4_6@{ shape: processes, label: "Volume Decryptor" };
 
-        4_1 --> 4_2;
-        4_2 --> 4_3_blockhandler;
-        4_3_blockhandler --> 4_2;
-        4_3_cache --> 4_4;
-        4_4 --> 4_5;
-        4_5 --> 4_6;
-        4_6 --> 4_4;
-        4_4 --> 4_7;
-        4_7 --> 4_3_volumeconsumer;
+        4_1 --1--> 4_2;
+        4_2 --2--> 4_3_blockhandler;
+        4_2 --2--> 4_3_blockhandler;
+        4_2 --2--> 4_3_blockhandler;
+        4_3_blockhandler --12--> 4_2;
+        4_3_blockhandler --12--> 4_2;
+        4_3_blockhandler --12--> 4_2;
+        4_3_cache --4--> 4_4;
+        4_4 --5--> 4_5;
+        4_5 --6--> 4_6;
+        4_6 --7--> 4_4;
+        4_4 --8--> 4_7;
+        4_7 --9--> 4_3_volumeconsumer;
     end;
 ```
 
+The implementation of each process in the process network can be seen in the respectively named files in the [`Duplicati/Library/Main/Operation/Restore` folder](https://github.com/duplicati/duplicati/tree/master/Duplicati/Library/Main/Operation/Restore).
+
 With this setup, each process in step 4 can run asynchronously, allowing for overlapping execution.
 Furthermore, some of the processes can run in parallel, allowing for using more system resources at the bottleneck steps.
-In particular, the core work of downloading (4.5), decrypting (4.6), decompressing (4.7), and patching blocks (4.1) is parallelized and can be scaled individually to match the system resources.
+In particular, the core work of downloading (4.5 Volume Downloader), decrypting (4.6 Volume Decryptor), decompressing (4.7 Volume Decompresor), and patching blocks (4.1 File Processor) is parallelized. Each of these steps can be scaled individually to maximize the utilization of the system resources.
 
-A major benefit is that the post verification step has been removed as it's now performed on the fly during the restore flow. This was separated in the legacy flow as the block writes were scattered, meaning each file was not ensured fully restored until the end of the flow. In the new flow, each file processor knows excatly when each file is fully restored and can thus verify while it is being restored.
+A major benefit is that the post verification step has been removed as it's now performed on the fly during the restore flow. This was separated in the legacy flow as the block writes were scattered, meaning each file was not ensured fully restored until the end of the flow. In the new flow, each file processor knows exactly when each file is fully restored and can thus verify while it is being restored.
 
 The whole network shuts down starting at the filelister, once it runs out of files to request.
 Then each fileprocessor shuts down when trying to request a file from the filelister, which is no longer available.
@@ -346,14 +351,15 @@ Once that subnetwork has shut down, the block cache shuts down, which is the fin
 This new flow alleviates the problems of the legacy flow, while retaining most of its benefits:
 
 - While the steps are no longer performed in a clearly separated sequence, each step is still separated into a process allowing for a clear separation of concerns.
-- The steps are parallelized, allowing for overlapping execution and full utilization of system resources.
+- The steps are executed concurrently, allowing for overlapping execution and full utilization of system resources.
 - The block writes are sequential to a file, leading to a more disk-friendly access pattern per file written.
-- The cache system ensures that each block and volume is only downloaded, decrypted, and decompressed once(assuming that cache entries aren't evicted too early due to memory limitations).
+- The cache system ensures that each block and volume is only downloaded, decrypted, and decompressed once
+  (assuming that cache entries aren't evicted too early due to memory limitations).
 - The verification is now performed integrated into the restore flow.
 
 It has the following drawbacks:
 
-- The flow is more complex, as it is now a network of processes that communicate through channels. This can, in the worst case, lead to deadlocks.
+- The flow is more complex, as it is now a network of processes that communicate through channels. This can, in the worst case, lead to deadlocks where the system is stalled without any progression.
 - The cache system needs to be managed, which can be a complex task, and that entails increased resource consumption.
 - The flow is less stable, as it is a new implementation that hasn't been tested as thoroughly as the legacy flow.
 
@@ -379,14 +385,42 @@ This new flow introduces several tunable parameters to control parallelism, the 
 - `--restore-preallocate-size=false`: Toggles whether to preallocate the target files. The default is false, not preallocating the target files. This can benefit the restore speed on some systems, as it hints the size to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
 - `--internal-profiling=false`: Toggles whether keep internal timers of each part of the restore flow. The default is false, not keeping internal timers. This is useful for tuning the parallelism parameters as the bottleneck processes can be identified.
 
-### Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
-
 # Results
 
-Much fast
+The new restore flow has been tested on the machines mentioned in the Machine setup section.
+We perform the following tests:
+
+- **Full restore** - The target directory of the restore is empty.
+- **Partial restore** - The target directory contains some of the files and files that partially match.
+- **No restore** - The target directory contains all of the files in their expected state.
+- **Restore metadata** - The target directory contains all of the files, but the metadata is incorrect and needs to be restored.
+
+Each test will be performed with the new flow and the legacy flow, with 5 warmup runs, and 10 measured runs. Each test will also be performed with both the default parameters and with the parameters tuned for maximum throughput on the respective machine. The benchmarks are (unless specified otherwise) performed on local storage, as we're focusing on the execution of the restore process. We'll be using three datasets:
+
+| Dataset        |     Files |   Size | Max file size | Duplication rate |
+| -------------- | --------: | -----: | ------------: | ---------------: |
+| Small dataset  |     1,000 |   1 GB |         10 MB |              10% |
+| Medium dataset |    10,000 |  10 GB |         10 MB |              20% |
+| Large dataset  | 1,000,000 | 100 GB |        100 MB |              30% |
+
+Files is the target number of files, Size is the target size, and Max file size is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. The internal distribution of how duplicated each duplicated block is follows a gauss distribution, meaning that some blocks will have a lot of duplication, while others will have very little.
 
 ## Example of tuning the restore process for maximum throughput
 
+Before we present the results, we'll show an example of how to tune the restore process for maximum throughput. We start by running the restore with the default parameters and the internal profiling enabled. We then analyze the internal profiling to identify the bottleneck processes. We then increase the number of processors for the bottleneck processes and rerun the restore. We repeat this process until we can't increase the throughput any further. Currently this is a manual process, but in the future we hope to automate this process.
+
+Let's look at the results for the small dataset on the MacBook:
+
+- Graph showing a distribution of where time is spent in each of the processes. This is the output of the internal profiling. Given that some processes are parallel, the time reported is the mean time. It is a bargraph with the processes on the x-axis and the time spent on the y-axis. Each bar is divided into sub bars, where the height of the bar is 1, meaning each sub bar is a percentage
+
+Here we see that for the default parameters on this particular dataset, the majority of the waiting time goes to the X process, which is the decompressor. In the next step, we increase the number of decompressors by two, and rerun the restore. We then analyze the internal profiling again and see that the waiting time has shifted to the Y process, which is the downloader. We then increase the number of downloaders by two, and rerun the restore. We repeat this process until we can't increase the throughput any further. Looking at the final step, we can see that the total time has been reduced by Z% compared to the default parameters.
+
+### Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
+
 # Conclusion
+
+automated parameter tuning
+
+actual parallel backend interactions.
 
 It's great - buy now.
