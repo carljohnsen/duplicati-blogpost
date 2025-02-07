@@ -16,22 +16,22 @@ git --version
 
 ## A Duplicati installation
 
-To run the benchmark, the `Duplicati.CommandLine.exe` and `Duplicati.TestDataGenerator.exe` executables must be available. To use the exact version used in this benchmark, run the following commands:
+To run the benchmark, the `Duplicati.CommandLine.exe` and `Duplicati.TestDataGenerator.exe` executables must be available. To use the exact version used in this benchmark, run the following commands (included in the `setup.sh` and `setup.ps1` scripts, which creates the `data_repos` directory and clones the repositories there):
 
 ```sh
 cd /path/to/where/you/want/the/repos
 git clone git@github.com:duplicati/duplicati.git duplicati
+cp -r duplicati duplicati_testdata
 cd duplicati
 git checkout 298c26b
 dotnet build -c Release
-cd ..
-git clone git@github.com:duplicati/duplicati.git duplicati-testdata
-cd duplicati-testdata
+cd ../duplicati_testdata
 git checkout df76a77
+cd Tools/TestDataGenerator
 dotnet build -c Release
 ```
 
-The path to the `Duplicati.CommandLine.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine`. The path to the `Duplicati.TestDataGenerator.exe` executable will be `/path/to/where/you/want/the/repos/duplicati-testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator`. On Windows, the executables will have have the `.exe` extension.
+The path to the `Duplicati.CommandLine.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine`. The path to the `Duplicati.TestDataGenerator.exe` executable will be `/path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator`. On Windows, the executables will have have the `.exe` extension.
 
 # Running the benchmark
 
@@ -46,13 +46,13 @@ The scripts produce a CSV file with the results of the benchmark and will be pla
 E.g. for Linux:
 
 ```sh
-./perform_runs.sh /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine /path/to/where/you/want/the/repos/duplicati-testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator small
+./perform_runs.sh /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine /path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator small
 ```
 
 E.g. for Windows:
 
 ```ps1
-.\perform_runs.ps1 /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine.exe /path/to/where/you/want/the/repos/duplicati-testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator.exe small
+.\perform_runs.ps1 /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine.exe /path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator.exe small
 ```
 
 # Plotting
