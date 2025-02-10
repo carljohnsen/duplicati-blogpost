@@ -219,13 +219,13 @@ namespace Runner
                 sw.Restart();
                 var generated = GenerateData(datagen, size, data_dir);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate.csv")))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 sw.Restart();
                 BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup.csv")))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 foreach (var use_legacy in legacies)
