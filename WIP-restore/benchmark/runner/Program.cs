@@ -28,7 +28,13 @@ namespace Runner
 
         public static void BackupData(string source, string destination, Dictionary<string, string> duplicati_options)
         {
-            using var c = new Controller($"file://{destination}", duplicati_options, null);
+            Console.WriteLine($"Backing up {source} to {destination}");
+#if DEBUG
+            using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, duplicati_options);
+#else
+            IMessageSink console_sink = null;
+#endif
+            using var c = new Controller($"file://{destination}", duplicati_options, console_sink);
             var results = c.Backup([source]);
             if (results.Errors.Any())
                 throw new Exception($"Backup failed with errors: {string.Join(Environment.NewLine, results.Errors)}");
@@ -114,6 +120,8 @@ namespace Runner
             else
                 Directory.CreateDirectory(data_dir);
 
+            Console.WriteLine($"Generating data for size {size_str}");
+
             using var process = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo
@@ -140,8 +148,6 @@ namespace Runner
 
         private static void ModifySome(IEnumerable<string> files)
         {
-            var sizes = files.Select(x => new FileInfo(x).Length).ToArray();
-
             foreach (var file in files)
             {
                 using var stream = File.Open(file, FileMode.Open, FileAccess.ReadWrite);
@@ -152,11 +158,6 @@ namespace Runner
                 stream.Seek(0, SeekOrigin.Begin);
                 stream.Write(buffer, 0, 1);
             }
-
-            var sizes_after = files.Select(x => new FileInfo(x).Length).ToArray();
-
-            if (sizes_after.Zip(sizes, (a, b) => a == b).Any(x => !x))
-                throw new Exception("File sizes do not match after modification");
         }
 
         private static void RestoreData(string source, string destination, Dictionary<string, string> duplicati_options, string use_legacy)
@@ -164,7 +165,11 @@ namespace Runner
             var packed_options = duplicati_options;
             packed_options["restore-legacy"] = use_legacy;
             packed_options["restore-path"] = destination;
+#if DEBUG
             using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, packed_options);
+#else
+            IMessageSink console_sink = null;
+#endif
             using var c = new Controller($"file://{source}", packed_options, console_sink);
             var results = c.Restore(["*"]);
             if (results.Errors.Any())
@@ -179,7 +184,8 @@ namespace Runner
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
             {
-                ["passphrase"] = "password"
+                ["passphrase"] = "password",
+                ["overwrite"] = "true"
             };
 
             string data_dir = Path.Combine(config.Output, "data");
