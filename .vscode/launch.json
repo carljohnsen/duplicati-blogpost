@@ -1,0 +1,19 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Restore rework runner",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/WIP-restore/benchmark/runner/bin/Debug/net8.0/runner",
+            "args": [],
+            "cwd": "${workspaceFolder}/WIP-restore/benchmark/runner",
+            "stopAtEntry": false,
+            "console": "internalConsole"
+        }
+    ]
+}
