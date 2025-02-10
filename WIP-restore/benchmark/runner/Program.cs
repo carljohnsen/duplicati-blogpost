@@ -198,8 +198,9 @@ namespace Runner
             string data_dir = Path.Combine(config.Output, "data");
             string times_dir = Path.Combine(config.Output, "times");
 
-            Directory.CreateDirectory(data_dir);
-            Directory.CreateDirectory(times_dir);
+            foreach (var dir in new string[] { data_dir, times_dir })
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
 
             var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
             if (!File.Exists(datagen))
