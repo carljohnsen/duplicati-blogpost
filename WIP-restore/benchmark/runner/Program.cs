@@ -34,6 +34,10 @@ namespace Runner
 #else
             IMessageSink console_sink = null;
 #endif
+
+            if (!Directory.Exists(destination))
+                Directory.CreateDirectory(destination);
+
             using var c = new Controller($"file://{destination}", duplicati_options, console_sink);
             var results = c.Backup([source]);
             if (results.Errors.Any())
