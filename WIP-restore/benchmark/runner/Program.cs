@@ -88,7 +88,7 @@ namespace Runner
         private static string GenerateData(string datagen, Size size, string output_dir)
         {
             string size_str;
-            long max_file_size, max_total_size, file_count;
+            long max_file_size, max_total_size, file_count, sparse_factor;
             switch (size)
             {
                 case Size.Small:
@@ -96,18 +96,21 @@ namespace Runner
                     max_file_size = 10485760; // 10MB
                     max_total_size = 1073741824; // 1GB
                     file_count = 1000;
+                    sparse_factor = 20;
                     break;
                 case Size.Medium:
                     size_str = "medium";
                     max_file_size = 10485760; // 10MB
                     max_total_size = 10737418240; // 10GB
                     file_count = 10000;
+                    sparse_factor = 30;
                     break;
                 case Size.Large:
                     size_str = "large";
                     max_file_size = 10485760; // 10MB
                     max_total_size = 107374182400; // 100GB
                     file_count = 1000000;
+                    sparse_factor = 40;
                     break;
                 default:
                     throw new ArgumentException($"Invalid size provided: {size}");
@@ -127,7 +130,7 @@ namespace Runner
                 StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = datagen,
-                    Arguments = $"create {data_dir} --max-file-size {max_file_size} --max-total-size {max_total_size} --file-count {file_count}",
+                    Arguments = $"create {data_dir} --max-file-size {max_file_size} --max-total-size {max_total_size} --file-count {file_count} --sparse-factor {sparse_factor}",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
