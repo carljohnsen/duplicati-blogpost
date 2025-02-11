@@ -89,7 +89,7 @@ namespace Runner
             return await root_cmd.InvokeAsync(args);
         }
 
-        private static string GenerateData(string datagen, Size size, string output_dir)
+        private static async Task<string> GenerateData(string datagen, Size size, string output_dir)
         {
             string size_str;
             long max_file_size, max_total_size, file_count, sparse_factor;
@@ -143,7 +143,7 @@ namespace Runner
             };
 
             process.Start();
-            process.WaitForExit();
+            await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
             {
@@ -217,7 +217,7 @@ namespace Runner
                 string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
                 string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
                 sw.Restart();
-                var generated = GenerateData(datagen, size, data_dir);
+                var generated = await GenerateData(datagen, size, data_dir);
                 sw.Stop();
                 using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
