@@ -51,6 +51,25 @@ namespace Runner
 
             foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
                 File.Delete(file);
+
+            Directory.Delete(directory, true);
+        }
+
+        public static void DeleteBackup(string directory, Dictionary<string, string> duplicati_options)
+        {
+            Console.WriteLine($"Deleting backup {directory}");
+#if DEBUG
+            using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, duplicati_options);
+#else
+            IMessageSink console_sink = null;
+#endif
+            var packed_options = duplicati_options;
+            packed_options["allow-full-removal"] = "true";
+            packed_options["version"] = "0";
+            using var c = new Controller($"file://{directory}", duplicati_options, console_sink);
+            var results = c.Delete();
+            if (results.Errors.Any())
+                throw new Exception($"Delete failed with errors: {string.Join(Environment.NewLine, results.Errors)}");
         }
 
         public static void DeleteSome(IEnumerable<string> files)
@@ -233,6 +252,9 @@ namespace Runner
                 using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
+                // Delete the generated data, as it's now backed up
+                DeleteAll(generated);
+
                 foreach (var use_legacy in legacies)
                 {
                     Console.WriteLine($"Legacy restore: {use_legacy}");
@@ -322,7 +344,15 @@ namespace Runner
                         Console.WriteLine();
                     }
                 }
+
+                // Delete the restored data, as it's no longer needed
+                DeleteAll(restore_dir);
+                DeleteBackup(backup_dir, duplicati_options);
+                DeleteAll(backup_dir);
             }
+
+            // Delete the data directory, as it's no longer needed
+            DeleteAll(data_dir);
 
             return 0;
         }
