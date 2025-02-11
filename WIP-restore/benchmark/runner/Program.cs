@@ -142,7 +142,12 @@ namespace Runner
                 }
             };
 
+            process.OutputDataReceived += (sender, e) => Console.WriteLine(e.Data);
+            process.ErrorDataReceived += (sender, e) => Console.WriteLine(e.Data);
+
             process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
             await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
