@@ -11,6 +11,15 @@ namespace Runner
 {
     public class Program
     {
+
+        private sealed record Config(
+            Size Size,
+            int Iterations,
+            string Output,
+            string DataGenerator,
+            Operation Operation
+        );
+
         private enum Size
         {
             All,
@@ -18,13 +27,6 @@ namespace Runner
             Medium,
             Large
         }
-
-        private sealed record Config(
-            Size Size,
-            int Iterations,
-            string Output,
-            string DataGenerator
-        );
 
         public static void BackupData(string source, string destination, Dictionary<string, string> duplicati_options)
         {
@@ -82,28 +84,12 @@ namespace Runner
         {
             var root_cmd = new RootCommand(@"Run the benchmark of the reworked restore flow.")
             {
-                new Option<string> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => "small") { Arity = ArgumentArity.ExactlyOne },
+                new Option<Size> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
-                new Option<string>(aliases: ["--data-generator"], description: "Path to the data generator executable", getDefaultValue: () => "../data_repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator") { Arity = ArgumentArity.ExactlyOne }
             };
 
-            root_cmd.Handler = CommandHandler.Create((string size, Config config) =>
-            {
-                // Parse the size to the enum
-                var size_enum = size.ToLower() switch
-                {
-                    "all" => Size.All,
-                    "small" => Size.Small,
-                    "medium" => Size.Medium,
-                    "large" => Size.Large,
-                    _ => throw new ArgumentException($"Invalid size provided: {size}")
-                };
-
-                var new_config = config with { Size = size_enum };
-
-                return Run(new_config);
-            });
+            root_cmd.Handler = CommandHandler.Create(Run);
 
             return await root_cmd.InvokeAsync(args);
         }
