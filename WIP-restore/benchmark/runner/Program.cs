@@ -20,6 +20,12 @@ namespace Runner
             Operation Operation
         );
 
+        private enum Operation
+        {
+            Regular,
+            Sparsity
+        }
+
         private enum Size
         {
             All,
@@ -87,6 +93,8 @@ namespace Runner
                 new Option<Size> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--data-generator"], description: "Path to the data generator executable", getDefaultValue: () => "../data_repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator") { Arity = ArgumentArity.ExactlyOne },
+                new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne }
             };
 
             root_cmd.Handler = CommandHandler.Create(Run);
@@ -194,6 +202,19 @@ namespace Runner
         }
 
         private static async Task<int> Run(Config config)
+        {
+            switch (config.Operation)
+            {
+                case Operation.Regular:
+                    return await RunRegular(config);
+                case Operation.Sparsity:
+                    return await RunSparsity(config);
+                default:
+                    throw new ArgumentException($"Invalid operation provided: {config.Operation}");
+            }
+        }
+
+        private static async Task<int> RunRegular(Config config)
         {
             string hostname = System.Net.Dns.GetHostName();
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
@@ -339,6 +360,13 @@ namespace Runner
 
             // Delete the data directory, as it's no longer needed
             DeleteAll(data_dir);
+
+            return 0;
+        }
+
+        private static async Task<int> RunSparsity(Config config)
+        {
+            Console.WriteLine("Indeaosneu");
 
             return 0;
         }
