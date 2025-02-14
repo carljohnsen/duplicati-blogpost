@@ -399,11 +399,13 @@ Each test will be performed with the new flow and the legacy flow, with 5 warmup
 
 | Dataset        |     Files |   Size | Max file size | Duplication rate |
 | -------------- | --------: | -----: | ------------: | ---------------: |
-| Small dataset  |     1,000 |   1 GB |         10 MB |              10% |
-| Medium dataset |    10,000 |  10 GB |         10 MB |              20% |
-| Large dataset  | 1,000,000 | 100 GB |        100 MB |              30% |
+| Small dataset  |     1,000 |   1 GB |         10 MB |              20% |
+| Medium dataset |    10,000 |  10 GB |         10 MB |              30% |
+| Large dataset  | 1,000,000 | 100 GB |        100 MB |              40% |
 
-Files is the target number of files, Size is the target size, and Max file size is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. The internal distribution of how duplicated each duplicated block is follows a gauss distribution, meaning that some blocks will have a lot of duplication, while others will have very little.
+Files is the target number of files, Size is the target size, and Max file size is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
+
+The internal distribution of how duplicated each duplicated block is follows a gauss distribution, meaning that some blocks will have a lot of duplication, while others will have very little.
 
 ## Example of tuning the restore process for maximum throughput
 
@@ -415,7 +417,11 @@ Let's look at the results for the small dataset on the MacBook:
 
 Here we see that for the default parameters on this particular dataset, the majority of the waiting time goes to the X process, which is the decompressor. In the next step, we increase the number of decompressors by two, and rerun the restore. We then analyze the internal profiling again and see that the waiting time has shifted to the Y process, which is the downloader. We then increase the number of downloaders by two, and rerun the restore. We repeat this process until we can't increase the throughput any further. Looking at the final step, we can see that the total time has been reduced by Z% compared to the default parameters.
 
-### Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
+## Effects of multiple FileProcessors on HDDs
+
+## Effects of the sparsity of the data
+
+## Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
 
 # Conclusion
 
