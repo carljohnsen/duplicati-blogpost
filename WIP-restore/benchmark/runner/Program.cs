@@ -13,11 +13,12 @@ namespace Runner
     {
 
         private sealed record Config(
-            Size Size,
-            int Iterations,
-            string Output,
             string DataGenerator,
-            Operation Operation
+            string Hostname,
+            int Iterations,
+            Operation Operation,
+            string Output,
+            Size Size,
         );
 
         private enum Operation
@@ -92,11 +93,12 @@ namespace Runner
         {
             var root_cmd = new RootCommand(@"Run the benchmark of the reworked restore flow.")
             {
-                new Option<Size> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
-                new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
-                new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--data-generator"], description: "Path to the data generator executable", getDefaultValue: () => "../data_repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--hostname"], description: "Hostname of the machine running the benchmark", getDefaultValue: () => System.Net.Dns.GetHostName()) { Arity = ArgumentArity.ExactlyOne },
+                new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne }
+                new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
+                new Option<Size> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
             };
 
             root_cmd.Handler = CommandHandler.Create(Run);
@@ -222,7 +224,6 @@ namespace Runner
 
         private static async Task<int> RunDatasetOnly(Config config)
         {
-            string hostname = System.Net.Dns.GetHostName();
             var sw = new Stopwatch();
             string data_dir = Path.Combine(config.Output, "data");
             if (!Directory.Exists(data_dir))
@@ -243,7 +244,7 @@ namespace Runner
                 sw.Restart();
                 var generated = await GenerateData(datagen, size, data_dir, 10);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate_sparse.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_generate_sparse.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
             }
             return 0;
@@ -251,7 +252,6 @@ namespace Runner
 
         private static async Task<int> RunFilesizes(Config config)
         {
-            string hostname = System.Net.Dns.GetHostName();
             var legacies = new string[] { "false", "true" };
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
@@ -282,14 +282,14 @@ namespace Runner
                 sw.Restart();
                 var generated = await GenerateData(datagen, config.Size, data_dir, file_size_mb: j * 10);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate_size.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_generate_size.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 sw.Restart();
                 BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
 
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup_size.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_backup_size.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 // Delete the generated data, as it's now backed up
@@ -298,7 +298,7 @@ namespace Runner
                 foreach (var use_legacy in new string[] { "true", "false" })
                 {
                     var legacy_str = use_legacy == "true" ? "Legacy" : "New";
-                    using var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_size_{use_legacy}.csv"), true);
+                    using var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_size_{use_legacy}.csv"), true);
 
                     Console.Write($"{legacy_str} restore: 0/{config.Iterations}");
                     for (int i = 0; i < config.Iterations; i++)
@@ -330,7 +330,6 @@ namespace Runner
 
         private static async Task<int> RunRegular(Config config)
         {
-            string hostname = System.Net.Dns.GetHostName();
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
             var legacies = new string[] { "false", "true" };
             var sw = new Stopwatch();
@@ -365,13 +364,13 @@ namespace Runner
                 sw.Restart();
                 var generated = await GenerateData(datagen, size, data_dir);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_generate.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 sw.Restart();
                 BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_backup.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 // Delete the generated data, as it's now backed up
@@ -385,7 +384,7 @@ namespace Runner
                     //
                     // Perform the full restore
                     //
-                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_full_{use_legacy}.csv")))
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_full_{use_legacy}.csv")))
                     {
                         Console.Write($"Full restore: 0/{config.Iterations}");
                         for (int i = 0; i < config.Iterations; i++)
@@ -413,7 +412,7 @@ namespace Runner
                     // The other half will be modified
                     var to_modify = random_files.Skip(random_files.Length / 2);
 
-                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_partial_{use_legacy}.csv")))
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_partial_{use_legacy}.csv")))
                     {
                         Console.Write($"Partial restore: 0/{config.Iterations}");
                         for (int i = 0; i < config.Iterations; i++)
@@ -433,7 +432,7 @@ namespace Runner
                     //
                     // Perform the no restore
                     //
-                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_no_{use_legacy}.csv")))
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_no_{use_legacy}.csv")))
                     {
                         Console.Write($"No restore: 0/{config.Iterations}");
                         duplicati_options["skip-metadata"] = "true";
@@ -452,7 +451,7 @@ namespace Runner
                     //
                     // Perform the metadata only restore
                     //
-                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_metadata_{use_legacy}.csv")))
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_metadata_{use_legacy}.csv")))
                     {
                         Console.Write($"Metadata only restore: 0/{config.Iterations}");
                         for (int i = 0; i < config.Iterations; i++)
@@ -484,7 +483,6 @@ namespace Runner
 
         private static async Task<int> RunSparsity(Config config)
         {
-            string hostname = System.Net.Dns.GetHostName();
             var legacies = new string[] { "false", "true" };
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
@@ -517,13 +515,13 @@ namespace Runner
                 sw.Restart();
                 var generated = await GenerateData(datagen, config.Size, data_dir, j * 10);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate_sparse.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_generate_sparse.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 sw.Restart();
                 BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup_sparse.csv"), true))
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_backup_sparse.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 // Delete the generated data, as it's now backed up
@@ -532,7 +530,7 @@ namespace Runner
                 foreach (var use_legacy in legacies)
                 {
                     Console.WriteLine($"Legacy restore: {use_legacy}");
-                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_sparse_{use_legacy}.csv"), true))
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.hostname}_{size_str}_sparse_{use_legacy}.csv"), true))
                     {
                         Console.Write($"Full restore: 0/{config.Iterations}");
                         for (int i = 0; i < config.Iterations; i++)
