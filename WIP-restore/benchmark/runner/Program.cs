@@ -404,6 +404,7 @@ namespace Runner
                     using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_no_{use_legacy}.csv")))
                     {
                         Console.Write($"No restore: 0/{config.Iterations}");
+                        duplicati_options["skip-metadata"] = "true";
                         for (int i = 0; i < config.Iterations; i++)
                         {
                             sw.Restart();
@@ -413,6 +414,7 @@ namespace Runner
                             Console.Write($"\rNo restore: {i + 1}/{config.Iterations}");
                         }
                         Console.WriteLine();
+                        duplicati_options.Remove("skip-metadata");
                     }
 
                     //
