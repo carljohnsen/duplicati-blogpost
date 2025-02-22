@@ -444,7 +444,8 @@ namespace Runner
             }
 
             // Delete the data directory, as it's no longer needed
-            DeleteAll(data_dir);
+            if (should_delete_data)
+                DeleteAll(data_dir);
 
             return 0;
         }
