@@ -23,7 +23,8 @@ namespace Runner
         private enum Operation
         {
             Regular,
-            Sparsity
+            Sparsity,
+            Filesizes
         }
 
         private enum Size
@@ -102,7 +103,7 @@ namespace Runner
             return await root_cmd.InvokeAsync(args);
         }
 
-        private static async Task<string> GenerateData(string datagen, Size size, string output_dir, long? sparsity = null)
+        private static async Task<string> GenerateData(string datagen, Size size, string output_dir, long? sparsity = null, long? file_size_mb = null)
         {
             string size_str;
             long max_file_size, max_total_size, file_count, sparse_factor;
@@ -110,21 +111,21 @@ namespace Runner
             {
                 case Size.Small:
                     size_str = "small";
-                    max_file_size = 10485760; // 10MB
+                    max_file_size = (file_size_mb ?? 10) * 1048576;
                     max_total_size = 1073741824; // 1GB
-                    file_count = 1000;
+                    file_count = max_total_size / max_file_size;
                     sparse_factor = sparsity ?? 20;
                     break;
                 case Size.Medium:
                     size_str = "medium";
-                    max_file_size = 10485760; // 10MB
+                    max_file_size = (file_size_mb ?? 10) * 10485760;
                     max_total_size = 10737418240; // 10GB
                     file_count = 10000;
                     sparse_factor = sparsity ?? 30;
                     break;
                 case Size.Large:
                     size_str = "large";
-                    max_file_size = 10485760; // 10MB
+                    max_file_size = (file_size_mb ?? 10) * 10485760;
                     max_total_size = 107374182400; // 100GB
                     file_count = 1000000;
                     sparse_factor = sparsity ?? 40;
@@ -209,9 +210,90 @@ namespace Runner
                     return await RunRegular(config);
                 case Operation.Sparsity:
                     return await RunSparsity(config);
+                case Operation.Filesizes:
+                    return await RunFilesizes(config);
                 default:
                     throw new ArgumentException($"Invalid operation provided: {config.Operation}");
             }
+        }
+
+        private static async Task<int> RunFilesizes(Config config)
+        {
+            string hostname = System.Net.Dns.GetHostName();
+            var legacies = new string[] { "false", "true" };
+            var sw = new Stopwatch();
+            Dictionary<string, string> duplicati_options = new()
+            {
+                ["passphrase"] = "password",
+                ["overwrite"] = "true"
+            };
+
+            string data_dir = Path.Combine(config.Output, "data");
+            string times_dir = Path.Combine(config.Output, "times");
+
+            foreach (var dir in new string[] { data_dir, times_dir })
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
+            if (!File.Exists(datagen))
+            {
+                throw new FileNotFoundException($"Data generator not found at {datagen}");
+            }
+            var size_str = config.Size.ToString().ToLower();
+            string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
+            string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
+
+            for (int j = 1; j <= 10; j++)
+            {
+                Console.WriteLine(@$"* Running benchmark for size {config.Size} with file sizes {j * 10} MB");
+                sw.Restart();
+                var generated = await GenerateData(datagen, config.Size, data_dir, file_size_mb: j * 10);
+                sw.Stop();
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate_size.csv"), true))
+                    writer.WriteLine(sw.ElapsedMilliseconds);
+
+                sw.Restart();
+                BackupData(generated, backup_dir, duplicati_options);
+                sw.Stop();
+
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_backup_size.csv"), true))
+                    writer.WriteLine(sw.ElapsedMilliseconds);
+
+                // Delete the generated data, as it's now backed up
+                DeleteAll(generated);
+
+                foreach (var use_legacy in new string[] { "true", "false" })
+                {
+                    var legacy_str = use_legacy == "true" ? "Legacy" : "New";
+                    using var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_size_{use_legacy}.csv"), true);
+
+                    Console.Write($"{legacy_str} restore: 0/{config.Iterations}");
+                    for (int i = 0; i < config.Iterations; i++)
+                    {
+                        DeleteAll(restore_dir);
+
+                        sw.Restart();
+                        RestoreData(backup_dir, restore_dir, duplicati_options, use_legacy);
+                        sw.Stop();
+                        if (i > 0)
+                            writer.Write(";");
+                        writer.Write(sw.ElapsedMilliseconds);
+                        Console.Write($"\r{legacy_str} restore: {i + 1}/{config.Iterations}");
+                    }
+                    writer.WriteLine();
+                    Console.WriteLine();
+                }
+
+                // Delete the restored data, as it's no longer needed
+                DeleteAll(restore_dir);
+                DeleteBackup(backup_dir, duplicati_options);
+                DeleteAll(backup_dir);
+            }
+
+            DeleteAll(data_dir);
+
+            return 0;
         }
 
         private static async Task<int> RunRegular(Config config)
@@ -228,6 +310,7 @@ namespace Runner
 
             string data_dir = Path.Combine(config.Output, "data");
             string times_dir = Path.Combine(config.Output, "times");
+            bool should_delete_data = !Directory.Exists(data_dir);
 
             foreach (var dir in new string[] { data_dir, times_dir })
                 if (!Directory.Exists(dir))
