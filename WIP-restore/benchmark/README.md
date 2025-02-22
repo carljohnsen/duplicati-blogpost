@@ -16,44 +16,39 @@ git --version
 
 ## A Duplicati installation
 
-To run the benchmark, the `Duplicati.CommandLine.exe` and `Duplicati.TestDataGenerator.exe` executables must be available. To use the exact version used in this benchmark, run the following commands (included in the `setup.sh` and `setup.ps1` scripts, which creates the `data_repos` directory and clones the repositories there):
+To run the benchmark, the `Duplicati.CommandLine.exe` and `Duplicati.TestDataGenerator.exe` executables must be available. To use the exact version used in this benchmark, run the following commands (included in the `setup.sh` script, which creates the `data_repos` directory and clones the repository):
 
 ```sh
 cd /path/to/where/you/want/the/repos
 git clone git@github.com:duplicati/duplicati.git duplicati
-cp -r duplicati duplicati_testdata
 cd duplicati
-git checkout 298c26b
+git checkout 5aa06f3
 dotnet build -c Release
-cd ../duplicati_testdata
-git checkout df76a77
 cd Tools/TestDataGenerator
 dotnet build -c Release
 ```
 
-The path to the `Duplicati.CommandLine.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine`. The path to the `Duplicati.TestDataGenerator.exe` executable will be `/path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator`. On Windows, the executables will have have the `.exe` extension.
+The path to the `Duplicati.CommandLine.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine`. The path to the `Duplicati.TestDataGenerator.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator`. On Windows, the executables will have have the `.exe` extension.
 
 # Running the benchmark
 
-To run the benchmark on Linux, run the `perform_runs.sh`. To run the benchmark on Windows, run the `perform_runs.ps1` PowerShell script. Both scripts take the same arguments and produce the same output. The three arguments are:
-
-1. The path to the `Duplicati.CommandLine.exe` executable.
-2. The path to the `Duplicati.TestDataGenerator.exe` executable.
-3. Which dataset to use. The options are `small`, `medium`, `large`, and `all`. The `all` option will run the benchmark for all datasets.
-
-The scripts produce a CSV file with the results of the benchmark and will be placed in the `results` directory in the same directory as the script.
-
-E.g. for Linux:
+The benchmark itself is written in C#. To run the benchmark, go to the `runner` directory and run the .NET program. E.g. to run the small benchmark with 10 iterations:
 
 ```sh
-./perform_runs.sh /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine /path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator small
+cd runner
+dotnet run -c Release -- -i 10 -s small
 ```
 
-E.g. for Windows:
+To get all of the time measurements used in this blogpost, run the following commands (they are also available in the `run_all.sh` script):
 
-```ps1
-.\perform_runs.ps1 /path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine.exe /path/to/where/you/want/the/repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator.exe small
+```sh
+cd runner
+dotnet run -c Release -- -i 10 -s all
+dotnet run -c Release -- -i 10 -s medium --operation sparsity
+dotnet run -c Release -- -i 10 -s medium --operation filesizes
 ```
+
+Note that they will take some time to run and that the large benchmark requires at least 200 GB of free disk space.
 
 # Plotting
 
