@@ -22,9 +22,10 @@ namespace Runner
 
         private enum Operation
         {
+            DatasetOnly,
+            Filesizes,
             Regular,
-            Sparsity,
-            Filesizes
+            Sparsity
         }
 
         private enum Size
@@ -95,7 +96,7 @@ namespace Runner
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--data-generator"], description: "Path to the data generator executable", getDefaultValue: () => "../data_repos/duplicati_testdata/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator") { Arity = ArgumentArity.ExactlyOne },
-                new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne }
+                new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne }
             };
 
             root_cmd.Handler = CommandHandler.Create(Run);
@@ -206,15 +207,46 @@ namespace Runner
         {
             switch (config.Operation)
             {
+                case Operation.DatasetOnly:
+                    return await RunDatasetOnly(config);
+                case Operation.Filesizes:
+                    return await RunFilesizes(config);
                 case Operation.Regular:
                     return await RunRegular(config);
                 case Operation.Sparsity:
                     return await RunSparsity(config);
-                case Operation.Filesizes:
-                    return await RunFilesizes(config);
                 default:
                     throw new ArgumentException($"Invalid operation provided: {config.Operation}");
             }
+        }
+
+        private static async Task<int> RunDatasetOnly(Config config)
+        {
+            string hostname = System.Net.Dns.GetHostName();
+            var sw = new Stopwatch();
+            string data_dir = Path.Combine(config.Output, "data");
+            if (!Directory.Exists(data_dir))
+                Directory.CreateDirectory(data_dir);
+            string times_dir = Path.Combine(config.Output, "times");
+            if (!Directory.Exists(times_dir))
+                Directory.CreateDirectory(times_dir);
+            Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
+            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
+            if (!File.Exists(datagen))
+            {
+                throw new FileNotFoundException($"Data generator not found at {datagen}");
+            }
+            foreach (var size in sizes)
+            {
+                var size_str = config.Size.ToString().ToLower();
+                Console.WriteLine($"Generating data for size {size_str}");
+                sw.Restart();
+                var generated = await GenerateData(datagen, size, data_dir, 10);
+                sw.Stop();
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{hostname}_{size_str}_generate_sparse.csv"), true))
+                    writer.WriteLine(sw.ElapsedMilliseconds);
+            }
+            return 0;
         }
 
         private static async Task<int> RunFilesizes(Config config)
