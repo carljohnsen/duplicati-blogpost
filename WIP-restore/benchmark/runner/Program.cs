@@ -18,8 +18,16 @@ namespace Runner
             int Iterations,
             Operation Operation,
             string Output,
-            Size Size
+            Size Size,
+            Legacy VersionToTest
         );
+
+        private enum Legacy
+        {
+            Both,
+            New,
+            Legacy
+        }
 
         private enum Operation
         {
@@ -98,7 +106,8 @@ namespace Runner
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
-                new Option<Size> (aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
+                new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
+                new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy", getDefaultValue: () => Legacy.Both) { Arity = ArgumentArity.ExactlyOne }
             };
 
             root_cmd.Handler = CommandHandler.Create(Run);
@@ -116,7 +125,7 @@ namespace Runner
                     size_str = "small";
                     max_file_size = (file_size_mb ?? 10) * 1048576;
                     max_total_size = 1073741824; // 1GB
-                    file_count = max_total_size / max_file_size;
+                    file_count = 1000;
                     sparse_factor = sparsity ?? 20;
                     break;
                 case Size.Medium:
@@ -189,6 +198,17 @@ namespace Runner
             }
         }
 
+        private static string[] ParseLegaciesToRun(Legacy legacy)
+        {
+            return legacy switch
+            {
+                Legacy.Both => new string[] { "false", "true" },
+                Legacy.New => new string[] { "false" },
+                Legacy.Legacy => new string[] { "true" },
+                _ => throw new ArgumentException($"Invalid version to test provided: {legacy}")
+            };
+        }
+
         private static void RestoreData(string source, string destination, Dictionary<string, string> duplicati_options, string use_legacy)
         {
             var packed_options = duplicati_options;
@@ -252,7 +272,7 @@ namespace Runner
 
         private static async Task<int> RunFilesizes(Config config)
         {
-            var legacies = new string[] { "false", "true" };
+            string[] legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
             {
@@ -331,7 +351,7 @@ namespace Runner
         private static async Task<int> RunRegular(Config config)
         {
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
-            var legacies = new string[] { "false", "true" };
+            var legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
             {
@@ -483,7 +503,7 @@ namespace Runner
 
         private static async Task<int> RunSparsity(Config config)
         {
-            var legacies = new string[] { "false", "true" };
+            var legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
             Dictionary<string, string> duplicati_options = new()
             {
