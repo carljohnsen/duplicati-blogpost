@@ -354,7 +354,9 @@ namespace Runner
             Dictionary<string, string> duplicati_options = new()
             {
                 ["passphrase"] = "password",
-                ["overwrite"] = "true"
+                ["overwrite"] = "true",
+                ["restore-cache-max"] = "64gb",
+                ["restore-channel-buffer-size"] = "4096"
             };
 
             string data_dir = Path.Combine(config.Output, "data");
