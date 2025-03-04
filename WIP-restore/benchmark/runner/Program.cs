@@ -22,7 +22,8 @@ namespace Runner
         {
             Both,
             New,
-            Legacy
+            Legacy,
+            PreNewBackend
         }
 
         private enum Operation
@@ -103,7 +104,7 @@ namespace Runner
                 new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
-                new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy", getDefaultValue: () => Legacy.Both) { Arity = ArgumentArity.ExactlyOne }
+                new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy, prenewbackend. Both runs legacy first, followed by new.", getDefaultValue: () => Legacy.Both) { Arity = ArgumentArity.ExactlyOne }
             };
 
             root_cmd.Handler = CommandHandler.Create(Run);
@@ -201,6 +202,7 @@ namespace Runner
                 Legacy.Both => new string[] { "false", "true" },
                 Legacy.New => new string[] { "false" },
                 Legacy.Legacy => new string[] { "true" },
+                Legacy.PreNewBackend => new string[] { "prenewbackend" },
                 _ => throw new ArgumentException($"Invalid version to test provided: {legacy}")
             };
         }
