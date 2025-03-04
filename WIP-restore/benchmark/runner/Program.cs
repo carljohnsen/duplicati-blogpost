@@ -1,11 +1,7 @@
-using System;
 using System.CommandLine;
 using System.CommandLine.NamingConventionBinder;
 using System.Diagnostics;
-using System.Threading.Tasks;
-using Duplicati;
 using Duplicati.Library.Main;
-using Google.Type;
 
 namespace Runner
 {
