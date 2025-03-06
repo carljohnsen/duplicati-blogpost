@@ -230,10 +230,10 @@ namespace Runner
         {
             return legacy switch
             {
-                Legacy.Both => new string[] { "false", "true" },
-                Legacy.New => new string[] { "false" },
-                Legacy.Legacy => new string[] { "true" },
-                Legacy.PreNewBackend => new string[] { "prenewbackend" },
+                Legacy.Both => ["false", "true"],
+                Legacy.New => ["false"],
+                Legacy.Legacy => ["true"],
+                Legacy.PreNewBackend => ["prenewbackend"],
                 _ => throw new ArgumentException($"Invalid version to test provided: {legacy}")
             };
         }
