@@ -50,7 +50,7 @@ namespace Runner
 #if DEBUG
             using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, duplicati_options);
 #else
-            IMessageSink console_sink = null;
+            IMessageSink? console_sink = null;
 #endif
 
             if (!Directory.Exists(destination))
@@ -100,7 +100,7 @@ namespace Runner
 #if DEBUG
             using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, duplicati_options);
 #else
-            IMessageSink console_sink = null;
+            IMessageSink? console_sink = null;
 #endif
             var packed_options = duplicati_options;
             packed_options["allow-full-removal"] = "true";
@@ -249,7 +249,7 @@ namespace Runner
 #if DEBUG
             using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, packed_options);
 #else
-            IMessageSink console_sink = null;
+            IMessageSink? console_sink = null;
 #endif
             using var c = new Controller($"file://{source}", packed_options, console_sink);
             var results = c.Restore(["*"]);
