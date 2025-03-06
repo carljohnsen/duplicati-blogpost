@@ -60,6 +60,27 @@ namespace Runner
                 throw new Exception($"Backup failed with errors: {string.Join(Environment.NewLine, results.Errors)}");
         }
 
+        private static (string, string) DefaultDirs(Config config)
+        {
+            var dirs = new string[] { "data", "times" };
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                dirs[i] = Path.Combine(config.Output, dirs[i]);
+                if (!Directory.Exists(dirs[i]))
+                    Directory.CreateDirectory(dirs[i]);
+            }
+            return (dirs[0], dirs[1]);
+        }
+
+        private static Dictionary<string, string> DefaultOptions()
+        {
+            return new Dictionary<string, string>
+            {
+                ["passphrase"] = "password",
+                ["overwrite"] = "true"
+            };
+        }
+
         public static void DeleteAll(string directory)
         {
             if (!Directory.Exists(directory))
@@ -92,6 +113,16 @@ namespace Runner
         {
             foreach (var file in files)
                 File.Delete(file);
+        }
+
+        private static string GetDatagen(Config config)
+        {
+            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
+            if (!File.Exists(datagen))
+            {
+                throw new FileNotFoundException($"Data generator not found at {datagen}");
+            }
+            return datagen;
         }
 
         public static async Task<int> Main(string[] args)
@@ -243,18 +274,12 @@ namespace Runner
         private static async Task<int> RunDatasetOnly(Config config)
         {
             var sw = new Stopwatch();
-            string data_dir = Path.Combine(config.Output, "data");
-            if (!Directory.Exists(data_dir))
-                Directory.CreateDirectory(data_dir);
-            string times_dir = Path.Combine(config.Output, "times");
-            if (!Directory.Exists(times_dir))
-                Directory.CreateDirectory(times_dir);
+            var (data_dir, times_dir) = DefaultDirs(config);
+
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
-            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
-            if (!File.Exists(datagen))
-            {
-                throw new FileNotFoundException($"Data generator not found at {datagen}");
-            }
+
+            var datagen = GetDatagen(config);
+
             foreach (var size in sizes)
             {
                 var size_str = config.Size.ToString().ToLower();
@@ -272,24 +297,11 @@ namespace Runner
         {
             string[] legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
-            Dictionary<string, string> duplicati_options = new()
-            {
-                ["passphrase"] = "password",
-                ["overwrite"] = "true"
-            };
+            var duplicati_options = DefaultOptions();
+            var (data_dir, times_dir) = DefaultDirs(config);
 
-            string data_dir = Path.Combine(config.Output, "data");
-            string times_dir = Path.Combine(config.Output, "times");
+            var datagen = GetDatagen(config);
 
-            foreach (var dir in new string[] { data_dir, times_dir })
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
-            if (!File.Exists(datagen))
-            {
-                throw new FileNotFoundException($"Data generator not found at {datagen}");
-            }
             var size_str = config.Size.ToString().ToLower();
             string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
             string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
@@ -351,27 +363,14 @@ namespace Runner
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
             var legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
-            Dictionary<string, string> duplicati_options = new()
-            {
-                ["passphrase"] = "password",
-                ["overwrite"] = "true",
-                ["restore-cache-max"] = "64gb",
-                ["restore-channel-buffer-size"] = "4096"
-            };
+            var duplicati_options = DefaultOptions();
+            duplicati_options["restore-cache-max"] = "64gb";
+            duplicati_options["restore-channel-buffer-size"] = "4096";
+            var (data_dir, times_dir) = DefaultDirs(config);
 
-            string data_dir = Path.Combine(config.Output, "data");
-            string times_dir = Path.Combine(config.Output, "times");
             bool should_delete_data = !Directory.Exists(data_dir);
 
-            foreach (var dir in new string[] { data_dir, times_dir })
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
-            if (!File.Exists(datagen))
-            {
-                throw new FileNotFoundException($"Data generator not found at {datagen}");
-            }
+            var datagen = GetDatagen(config);
 
             foreach (var size in sizes)
             {
@@ -505,24 +504,10 @@ namespace Runner
         {
             var legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
-            Dictionary<string, string> duplicati_options = new()
-            {
-                ["passphrase"] = "password",
-                ["overwrite"] = "true"
-            };
+            var duplicati_options = DefaultOptions();
+            var (data_dir, times_dir) = DefaultDirs(config);
 
-            string data_dir = Path.Combine(config.Output, "data");
-            string times_dir = Path.Combine(config.Output, "times");
-
-            foreach (var dir in new string[] { data_dir, times_dir })
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-            var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
-            if (!File.Exists(datagen))
-            {
-                throw new FileNotFoundException($"Data generator not found at {datagen}");
-            }
+            var datagen = GetDatagen(config);
             var size_str = config.Size.ToString().ToLower();
             string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
             string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
