@@ -141,7 +141,7 @@ namespace Runner
                 new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity, tuning", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
-                new Option<string>(aliases: ["--tuning"], description: "The concurrency parameters to test. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>", getDefaultValue: () => "1,1,1,1") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--tuning"], description: "The concurrency parameters to test. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>", getDefaultValue: () => "") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy, prenewbackend. Both runs legacy first, followed by new.", getDefaultValue: () => Legacy.Both){ Arity = ArgumentArity.ExactlyOne }
             };
 
@@ -375,9 +375,15 @@ namespace Runner
             var duplicati_options = DefaultOptions();
             duplicati_options["restore-cache-max"] = "64gb";
             duplicati_options["restore-channel-buffer-size"] = "4096";
+            if (config.Tuning != "")
+            {
+                var tuning = config.Tuning.Split(',');
+                duplicati_options["restore-file-processors"] = tuning[0];
+                duplicati_options["restore-volume-downloaders"] = tuning[1];
+                duplicati_options["restore-volume-decryptors"] = tuning[2];
+                duplicati_options["restore-volume-decompressors"] = tuning[3];
+            }
             var (data_dir, times_dir) = DefaultDirs(config);
-
-            bool should_delete_data = !Directory.Exists(data_dir);
 
             var datagen = GetDatagen(config);
 
@@ -596,7 +602,7 @@ namespace Runner
             var size_str = config.Size.ToString().ToLower();
             if (config.Size == Size.All)
                 throw new ArgumentException("Tuning does not support running all sizes");
-            string[] tuning = config.Tuning.Split(',');
+            string[] tuning = config.Tuning == "" ? ["1", "1", "1", "1"] : config.Tuning.Split(',');
             if (tuning.Length != 4)
                 throw new ArgumentException("Invalid tuning parameters provided. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>");
 
