@@ -392,7 +392,8 @@ namespace Runner
                     writer.WriteLine(sw.ElapsedMilliseconds);
 
                 sw.Restart();
-                BackupData(generated, backup_dir, duplicati_options);
+                if (!Directory.Exists(backup_dir))
+                    BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
                 using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_backup.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
