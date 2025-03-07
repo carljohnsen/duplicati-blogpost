@@ -641,6 +641,7 @@ namespace Runner
                     File.Delete(log_file);
 
                 duplicati_options["restore-channel-buffer-size"] = "4096";
+                duplicati_options["restore-cache-max"] = "64gb";
                 duplicati_options["internal-profiling"] = "true";
                 duplicati_options["log-file-log-filter"] = "+[.*InternalTimings.*]:+[.*RestoreNetwork.*]:-[.*]";
                 duplicati_options["log-file-log-level"] = "Profiling";
