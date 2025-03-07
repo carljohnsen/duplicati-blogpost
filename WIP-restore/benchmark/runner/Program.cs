@@ -10,6 +10,7 @@ namespace Runner
 
         private sealed record Config(
             int AutoTuningSteps,
+            bool Cleanup,
             string DataGenerator,
             string Hostname,
             int Iterations,
@@ -133,6 +134,7 @@ namespace Runner
             var root_cmd = new RootCommand(@"Run the benchmark of the reworked restore flow.")
             {
                 new Option<int>(aliases: ["--auto-tuning-steps"], description: "Number of un-improving steps to perform in the auto tuning from finding a minima. If set to 0, only one run will be performed.", getDefaultValue: () => 3),
+                new Option<bool>(aliases: ["--cleanup"], description: "Delete the generated and backup data after the benchmark", getDefaultValue: () => false),
                 new Option<string>(aliases: ["--data-generator"], description: "Path to the data generator executable", getDefaultValue: () => "../data_repos/duplicati/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator") { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--hostname"], description: "Hostname of the machine running the benchmark", getDefaultValue: () => System.Net.Dns.GetHostName()) { Arity = ArgumentArity.ExactlyOne },
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
@@ -387,21 +389,26 @@ namespace Runner
                 var size_str = size.ToString().ToLower();
                 string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
                 string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
-                sw.Restart();
-                var generated = await GenerateData(datagen, size, data_dir);
-                sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate.csv"), true))
-                    writer.WriteLine(sw.ElapsedMilliseconds);
-
-                sw.Restart();
                 if (!Directory.Exists(backup_dir))
-                    BackupData(generated, backup_dir, duplicati_options);
-                sw.Stop();
-                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_backup.csv"), true))
-                    writer.WriteLine(sw.ElapsedMilliseconds);
+                {
 
-                // Delete the generated data, as it's now backed up
-                DeleteAll(generated);
+                    sw.Restart();
+                    var generated = await GenerateData(datagen, size, data_dir);
+                    sw.Stop();
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate.csv"), true))
+                        writer.WriteLine(sw.ElapsedMilliseconds);
+
+                    sw.Restart();
+                    if (!Directory.Exists(backup_dir))
+                        BackupData(generated, backup_dir, duplicati_options);
+                    sw.Stop();
+                    using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_backup.csv"), true))
+                        writer.WriteLine(sw.ElapsedMilliseconds);
+                    // Delete the generated data, as it's now backed up
+                    if (config.Cleanup)
+                        DeleteAll(generated);
+                }
+
 
                 foreach (var use_legacy in legacies)
                 {
@@ -495,14 +502,16 @@ namespace Runner
                     }
                 }
 
-                // Delete the restored data, as it's no longer needed
-                DeleteAll(restore_dir);
-                DeleteBackup(backup_dir, duplicati_options);
-                DeleteAll(backup_dir);
+                if (config.Cleanup)
+                {
+                    // Delete the restored data, as it's no longer needed
+                    DeleteAll(restore_dir);
+                    DeleteBackup(backup_dir, duplicati_options);
+                    DeleteAll(backup_dir);
+                }
             }
 
-            // Delete the data directory, as it's no longer needed
-            if (should_delete_data)
+            if (config.Cleanup)
                 DeleteAll(data_dir);
 
             return 0;
@@ -591,22 +600,28 @@ namespace Runner
             if (tuning.Length != 4)
                 throw new ArgumentException("Invalid tuning parameters provided. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>");
 
-            sw.Start();
-            var generated = await GenerateData(datagen, config.Size, data_dir);
-            sw.Stop();
-            using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate.csv"), true))
-                writer.WriteLine(sw.ElapsedMilliseconds);
+
 
             string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
             string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
 
             if (!Directory.Exists(backup_dir))
             {
+                sw.Start();
+                var generated = await GenerateData(datagen, config.Size, data_dir);
+                sw.Stop();
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate.csv"), true))
+                    writer.WriteLine(sw.ElapsedMilliseconds);
+
                 sw.Restart();
                 BackupData(generated, backup_dir, duplicati_options);
                 sw.Stop();
-                using var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_backup.csv"), true);
-                writer.WriteLine(sw.ElapsedMilliseconds);
+                using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_backup.csv"), true))
+                    writer.WriteLine(sw.ElapsedMilliseconds);
+
+                // Delete the generated data, as it's now backed up
+                if (config.Cleanup)
+                    DeleteAll(generated);
             }
 
             int steps = 0;
@@ -747,6 +762,14 @@ namespace Runner
             } while (config.AutoTuningSteps > 0 && steps < config.AutoTuningSteps && tuning.All(x => int.Parse(x) < Environment.ProcessorCount * 2));
 
             Console.WriteLine($"Best tuning found with {minima:0.00} ms: {best_tune}");
+
+            if (config.Cleanup)
+            {
+                DeleteAll(restore_dir);
+                DeleteBackup(backup_dir, duplicati_options);
+                DeleteAll(backup_dir);
+                DeleteAll(data_dir);
+            }
 
             return 0;
         }
