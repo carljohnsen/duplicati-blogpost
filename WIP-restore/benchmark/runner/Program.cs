@@ -635,139 +635,151 @@ namespace Runner
             double minima = double.MaxValue;
             string best_tune = string.Join(",", tuning);
 
-            do
+            var timing_csv = Path.Combine(times_dir, $"{config.Hostname}_{size_str}_tuning.csv");
+            var write_header = !SystemIO.IO_OS.FileExists(timing_csv);
+
+            using (var writer = new StreamWriter(timing_csv, true))
             {
-                var log_file = Path.Combine(data_dir, $"profiling_{string.Join("_", tuning)}.log");
-                if (File.Exists(log_file))
-                    File.Delete(log_file);
+                if (write_header)
+                    writer.WriteLine("n_FileProcessors;n_VolumeDownloaders;n_VolumeDecryptors;n_VolumeDecompressors;read_FileProcessor;work_FileProcessor;read_VolumeDownloader;work_VolumeDownloader;read_VolumeDecryptor;work_VolumeDecryptor;read_VolumeDecompressor;work_VolumeDecompressor;wall_clock_setup;wall_clock_restore");
 
-                duplicati_options["restore-channel-buffer-size"] = "4096";
-                duplicati_options["restore-cache-max"] = "64gb";
-                duplicati_options["internal-profiling"] = "true";
-                duplicati_options["log-file-log-filter"] = "+[.*InternalTimings.*]:+[.*RestoreNetwork.*]:-[.*]";
-                duplicati_options["log-file-log-level"] = "Profiling";
-                duplicati_options["log-file"] = log_file;
-                duplicati_options["restore-file-processors"] = tuning[0];
-                duplicati_options["restore-volume-downloaders"] = tuning[1];
-                duplicati_options["restore-volume-decryptors"] = tuning[2];
-                duplicati_options["restore-volume-decompressors"] = tuning[3];
-
-                Dictionary<string, (List<long>, List<long>)> timings = new()
+                do
                 {
-                    ["FileProcessor"] = ([], []),
-                    ["VolumeDownloader"] = ([], []),
-                    ["VolumeDecryptor"] = ([], []),
-                    ["VolumeDecompressor"] = ([], [])
-                };
-                List<long> wall_clock = [];
+                    var log_file = Path.Combine(data_dir, $"profiling_{string.Join("_", tuning)}.log");
+                    if (SystemIO.IO_OS.FileExists(log_file))
+                        SystemIO.IO_OS.FileDelete(log_file);
 
-                Console.WriteLine($"Running restore with tuning parameters: {string.Join(", ", tuning)}");
+                    duplicati_options["restore-channel-buffer-size"] = "4096";
+                    duplicati_options["restore-cache-max"] = "64gb";
+                    duplicati_options["internal-profiling"] = "true";
+                    duplicati_options["log-file-log-filter"] = "+[.*InternalTimings.*]:+[.*RestoreNetwork.*]:-[.*]";
+                    duplicati_options["log-file-log-level"] = "Profiling";
+                    duplicati_options["log-file"] = log_file;
+                    duplicati_options["restore-file-processors"] = tuning[0];
+                    duplicati_options["restore-volume-downloaders"] = tuning[1];
+                    duplicati_options["restore-volume-decryptors"] = tuning[2];
+                    duplicati_options["restore-volume-decompressors"] = tuning[3];
+
+                    Dictionary<string, (List<long>, List<long>)> timings = new()
+                    {
+                        ["FileProcessor"] = ([], []),
+                        ["VolumeDownloader"] = ([], []),
+                        ["VolumeDecryptor"] = ([], []),
+                        ["VolumeDecompressor"] = ([], [])
+                    };
+                    List<long> wall_clock = [];
+
+                    Console.WriteLine($"Running restore with tuning parameters: {string.Join(", ", tuning)}");
 
 
-                for (int i = 0; i < config.Iterations; i++)
-                {
-                    DeleteAll(restore_dir);
 
-                    Console.Write($"\r{i}/{config.Iterations}");
-                    RestoreData(backup_dir, restore_dir, duplicati_options, legacy_str);
+                    for (int i = 0; i < config.Iterations; i++)
+                    {
+                        DeleteAll(restore_dir);
 
-                    using var reader = new StreamReader(log_file);
-                    string? line;
-                    if (reader != null)
-                        while ((line = reader.ReadLine()) != null)
-                        {
-                            if (line.Contains("took"))
+                        Console.Write($"\r{i}/{config.Iterations}");
+                        RestoreData(backup_dir, restore_dir, duplicati_options, legacy_str);
+
+                        using var reader = new StreamReader(log_file);
+                        string? line;
+                        if (reader != null)
+                            while ((line = reader.ReadLine()) != null)
                             {
-                                // Parse the total ms from the last token which is in 0:00:00:00.000 format
-                                var time_str = line.Split(' ')[^1];
-                                var time = TimeSpan.Parse(time_str);
-                                wall_clock.Add((long)time.TotalMilliseconds);
-                                continue;
+                                if (line.Contains("took"))
+                                {
+                                    // Parse the total ms from the last token which is in 0:00:00:00.000 format
+                                    var time_str = line.Split(' ')[^1];
+                                    var time = TimeSpan.Parse(time_str);
+                                    wall_clock.Add((long)time.TotalMilliseconds);
+                                    continue;
+                                }
+
+                                // Remove the first 78 characters, as they are the timestamp and common
+                                line = line[78..];
+                                int idx = line.IndexOf('-');
+                                var process_name = line[..idx];
+                                var tokens = line[idx..].Split(' ');
+                                var times = tokens
+                                    .Where(x => x.Contains("ms") || x.Contains("ms,"))
+                                    .Select(x => int.Parse(new string([.. x.Where(y => char.IsDigit(y))])))
+                                    .ToArray();
+
+                                var (times_list, read_list) = timings.GetValueOrDefault(process_name, ([], []));
+                                var found = true;
+
+                                switch (process_name)
+                                {
+                                    case "FileProcessor":
+                                        var timesum = times[1..3].Concat(times[5..8]).Concat(times[9..]).Sum();
+                                        times_list.Add(timesum);
+                                        read_list.Add(times[4]);
+                                        break;
+                                    case "VolumeDownloader":
+                                        times_list.Add(times[2]);
+                                        read_list.Add(times[0]);
+                                        break;
+                                    case "VolumeDecryptor":
+                                        times_list.Add(times[1]);
+                                        read_list.Add(times[0]);
+                                        break;
+                                    case "VolumeDecompressor":
+                                        times_list.Add(times[2..].Sum());
+                                        read_list.Add(times[0]);
+                                        break;
+                                    default:
+                                        found = false; // Ignore
+                                        break;
+                                }
+
+                                if (found)
+                                    timings[process_name] = (times_list, read_list);
                             }
+                    }
 
-                            // Remove the first 78 characters, as they are the timestamp and common
-                            line = line[78..];
-                            int idx = line.IndexOf('-');
-                            var process_name = line[..idx];
-                            var tokens = line[idx..].Split(' ');
-                            var times = tokens
-                                .Where(x => x.Contains("ms") || x.Contains("ms,"))
-                                .Select(x => int.Parse(new string([.. x.Where(y => char.IsDigit(y))])))
-                                .ToArray();
+                    Console.WriteLine($"\r{config.Iterations}/{config.Iterations}");
 
-                            var (times_list, read_list) = timings.GetValueOrDefault(process_name, ([], []));
-                            var found = true;
+                    foreach (string process in new string[] { "FileProcessor", "VolumeDownloader", "VolumeDecryptor", "VolumeDecompressor" })
+                    {
+                        var (times, reads) = timings[process];
+                        var times_str = times.Average();//string.Join(";", times);
+                        var reads_str = reads.Average();//string.Join(";", reads);
+                        Console.WriteLine($"{process}: {reads_str:0.00} - {times_str:0.00}");
+                    }
 
-                            switch (process_name)
-                            {
-                                case "FileProcessor":
-                                    var timesum = times[1..3].Concat(times[5..8]).Concat(times[9..]).Sum();
-                                    times_list.Add(timesum);
-                                    read_list.Add(times[4]);
-                                    break;
-                                case "VolumeDownloader":
-                                    times_list.Add(times[2]);
-                                    read_list.Add(times[0]);
-                                    break;
-                                case "VolumeDecryptor":
-                                    times_list.Add(times[1]);
-                                    read_list.Add(times[0]);
-                                    break;
-                                case "VolumeDecompressor":
-                                    times_list.Add(times[2..].Sum());
-                                    read_list.Add(times[0]);
-                                    break;
-                                default:
-                                    found = false; // Ignore
-                                    break;
-                            }
+                    var total_work = timings.Select(x => x.Value.Item1.Average()).Sum();
+                    var total_read = timings.Select(x => x.Value.Item2.Average()).Average();
+                    Console.WriteLine($"Total work: {total_read:0.00} - {total_work:0.00}");
 
-                            if (found)
-                                timings[process_name] = (times_list, read_list);
-                        }
-                }
+                    // Take every other value, as the first is setup and the second is restore
+                    var wall_clock_setup = wall_clock.Where((x, i) => i % 2 == 0).Average();
+                    var wall_clock_restore = wall_clock.Where((x, i) => i % 2 == 1).Average();
+                    var wall_clock_total = wall_clock_setup + wall_clock_restore;
+                    Console.WriteLine($"[Wall clock] - setup {wall_clock_setup:0.00}, restore {wall_clock_restore:0.00}, total {wall_clock_total:0.00}");
 
-                Console.WriteLine($"\r{config.Iterations}/{config.Iterations}");
+                    Console.WriteLine($"Approximate hidden overhead: {wall_clock_total - total_work:0.00}");
 
-                foreach (string process in new string[] { "FileProcessor", "VolumeDownloader", "VolumeDecryptor", "VolumeDecompressor" })
-                {
-                    var (times, reads) = timings[process];
-                    var times_str = times.Average();//string.Join(";", times);
-                    var reads_str = reads.Average();//string.Join(";", reads);
-                    Console.WriteLine($"{process}: {reads_str:0.00} - {times_str:0.00}");
-                }
+                    writer.WriteLine($"{string.Join(";", tuning)};{timings["FileProcessor"].Item2.Average()};{timings["FileProcessor"].Item1.Average()};{timings["VolumeDownloader"].Item2.Average()};{timings["VolumeDownloader"].Item1.Average()};{timings["VolumeDecryptor"].Item2.Average()};{timings["VolumeDecryptor"].Item1.Average()};{timings["VolumeDecompressor"].Item2.Average()};{timings["VolumeDecompressor"].Item1.Average()};{wall_clock_setup:0.00};{wall_clock_restore:0.00}");
 
-                var total_work = timings.Select(x => x.Value.Item1.Average()).Sum();
-                var total_read = timings.Select(x => x.Value.Item2.Average()).Average();
-                Console.WriteLine($"Total work: {total_read:0.00} - {total_work:0.00}");
+                    if (wall_clock_total < minima)
+                    {
+                        minima = wall_clock_total;
+                        best_tune = string.Join(",", tuning);
+                        steps = 0;
+                    }
+                    else
+                        steps++;
 
-                // Take every other value, as the first is setup and the second is restore
-                var wall_clock_setup = wall_clock.Where((x, i) => i % 2 == 0).Average();
-                var wall_clock_restore = wall_clock.Where((x, i) => i % 2 == 1).Average();
-                var wall_clock_total = wall_clock_setup + wall_clock_restore;
-                Console.WriteLine($"[Wall clock] - setup {wall_clock_setup:0.00}, restore {wall_clock_restore:0.00}, total {wall_clock_total:0.00}");
-
-                Console.WriteLine($"Approximate hidden overhead: {wall_clock_total - total_work:0.00}");
-
-                if (wall_clock_total < minima)
-                {
-                    minima = wall_clock_total;
-                    best_tune = string.Join(",", tuning);
-                    steps = 0;
-                }
-                else
-                    steps++;
-
-                if (total_read > total_work)
-                {
-                    tuning[0] = (int.Parse(tuning[0]) * 2).ToString();
-                }
-                else
-                {
-                    var max_idx = timings.Select((x, i) => (x.Value.Item1.Average(), i)).Max().i;
-                    tuning[max_idx] = (int.Parse(tuning[max_idx]) * 2).ToString();
-                }
-            } while (config.AutoTuningSteps > 0 && steps < config.AutoTuningSteps && tuning.All(x => int.Parse(x) < Environment.ProcessorCount * 2));
+                    if (total_read > total_work)
+                    {
+                        tuning[0] = (int.Parse(tuning[0]) * 2).ToString();
+                    }
+                    else
+                    {
+                        var max_idx = timings.Select((x, i) => (x.Value.Item1.Average(), i)).Max().i;
+                        tuning[max_idx] = (int.Parse(tuning[max_idx]) * 2).ToString();
+                    }
+                } while (config.AutoTuningSteps > 0 && steps < config.AutoTuningSteps && tuning.All(x => int.Parse(x) < Environment.ProcessorCount * 2));
+            }
 
             Console.WriteLine($"Best tuning found with {minima:0.00} ms: {best_tune}");
 
