@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.CommandLine.NamingConventionBinder;
 using System.Diagnostics;
+using Duplicati.Library.Common.IO;
 using Duplicati.Library.Main;
 
 namespace Runner
@@ -91,7 +92,7 @@ namespace Runner
                 return;
 
             foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-                File.Delete(file);
+                SystemIO.IO_OS.FileDelete(file);
 
             Directory.Delete(directory, true);
         }
@@ -116,13 +117,13 @@ namespace Runner
         public static void DeleteSome(IEnumerable<string> files)
         {
             foreach (var file in files)
-                File.Delete(file);
+                SystemIO.IO_OS.FileDelete(file);
         }
 
         private static string GetDatagen(Config config)
         {
             var datagen = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) ? $"{config.DataGenerator}.exe" : config.DataGenerator;
-            if (!File.Exists(datagen))
+            if (!SystemIO.IO_OS.FileExists(datagen))
             {
                 throw new FileNotFoundException($"Data generator not found at {datagen}");
             }
@@ -223,7 +224,7 @@ namespace Runner
         {
             foreach (var file in files)
             {
-                using var stream = File.Open(file, FileMode.Open, FileAccess.ReadWrite);
+                using var stream = SystemIO.IO_OS.FileOpenReadWrite(file);
                 stream.Seek(0, SeekOrigin.Begin);
                 byte[] buffer = new byte[1];
                 stream.Read(buffer, 0, 1);
@@ -784,7 +785,7 @@ namespace Runner
         private static void TouchAll(string directory)
         {
             foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-                File.SetLastWriteTimeUtc(file, System.DateTime.UtcNow);
+                SystemIO.IO_OS.FileSetLastWriteTimeUtc(file, System.DateTime.UtcNow);
         }
     }
 }
