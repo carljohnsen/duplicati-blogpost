@@ -248,9 +248,11 @@ namespace Runner
 
         private static void RestoreData(string source, string destination, Dictionary<string, string> duplicati_options, string use_legacy)
         {
-            var packed_options = duplicati_options;
-            packed_options["restore-legacy"] = use_legacy;
-            packed_options["restore-path"] = destination;
+            var packed_options = new Dictionary<string, string>(duplicati_options)
+            {
+                ["restore-legacy"] = use_legacy,
+                ["restore-path"] = destination
+            };
 #if DEBUG
             using var console_sink = new Duplicati.CommandLine.ConsoleOutput(Console.Out, packed_options);
 #else
