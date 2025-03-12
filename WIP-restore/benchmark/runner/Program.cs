@@ -691,7 +691,8 @@ namespace Runner
                                 {
                                     // Parse the total ms from the last token which is in 0:00:00:00.000 format
                                     var time_str = line.Split(' ')[^1];
-                                    var time = TimeSpan.Parse(time_str);
+                                    var format = @"d\:hh\:mm\:ss\.fff";
+                                    var time = TimeSpan.ParseExact(time_str, format, System.Globalization.CultureInfo.InvariantCulture);
                                     wall_clock.Add((long)time.TotalMilliseconds);
                                     continue;
                                 }
