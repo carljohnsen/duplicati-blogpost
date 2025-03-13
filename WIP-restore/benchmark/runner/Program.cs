@@ -46,7 +46,8 @@ namespace Runner
             All,
             Small,
             Medium,
-            Large
+            Large,
+            Huge
         }
 
         public static void BackupData(string source, string destination, Dictionary<string, string> duplicati_options)
@@ -150,7 +151,7 @@ namespace Runner
                 new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--backup-output", "-bo"], description: "Output directory to hold the backup data", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--restore-output", "-ro"], description: "Output directory to hold the restored data", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
-                new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
+                new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large, huge. All includes small, medium, and large.", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--tuning"], description: "The concurrency parameters to test. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>", getDefaultValue: () => "") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy, prenewbackend. Both runs legacy first, followed by new.", getDefaultValue: () => Legacy.Both){ Arity = ArgumentArity.ExactlyOne }
             };
@@ -186,6 +187,13 @@ namespace Runner
                     max_total_size = 107374182400; // 100GB
                     file_count = 1000000;
                     sparse_factor = sparsity ?? 40;
+                    break;
+                case Size.Huge:
+                    size_str = "huge";
+                    max_file_size = 1024 * 1024 * 1024; // 1GB
+                    max_total_size = 10L * 1024L * 1024L * 1024L * 1024L; // 10TB
+                    file_count = 10000000;
+                    sparse_factor = sparsity ?? 25;
                     break;
                 default:
                     throw new ArgumentException($"Invalid size provided: {size}");
