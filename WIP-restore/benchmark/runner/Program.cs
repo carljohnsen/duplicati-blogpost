@@ -61,7 +61,9 @@ namespace Runner
             if (!Directory.Exists(destination))
                 Directory.CreateDirectory(destination);
 
-            using var c = new Controller($"file://{destination}", duplicati_options, console_sink);
+            var options = new Dictionary<string, string>(duplicati_options);
+
+            using var c = new Controller($"file://{destination}", options, console_sink);
             var results = c.Backup([source]);
             if (results.Errors.Any())
                 throw new Exception($"Backup failed with errors: {string.Join(Environment.NewLine, results.Errors)}");
