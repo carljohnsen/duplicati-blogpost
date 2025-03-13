@@ -160,7 +160,7 @@ namespace Runner
             return await root_cmd.InvokeAsync(args);
         }
 
-        private static async Task<string> GenerateData(string datagen, Size size, string output_dir, long? sparsity = null, long? file_size_mb = null)
+        private static async Task<string> GenerateData(string datagen, Size size, string output_dir, long? sparsity = null, long? file_size_mb = null, string prefix = "")
         {
             string size_str;
             long max_file_size, max_total_size, file_count, sparse_factor;
@@ -191,7 +191,7 @@ namespace Runner
                     throw new ArgumentException($"Invalid size provided: {size}");
             }
 
-            string data_dir = Path.Combine(output_dir, size_str);
+            string data_dir = Path.Combine(output_dir, prefix == "" ? size_str : $"{prefix}_{size_str}");
 
             if (Directory.Exists(data_dir))
                 return data_dir;
@@ -324,14 +324,14 @@ namespace Runner
             var datagen = GetDatagen(config);
 
             var size_str = config.Size.ToString().ToLower();
-            string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
-            string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
+            string backup_dir = Path.Combine(data_dir, $"filesize_backup_{size_str}");
+            string restore_dir = Path.Combine(data_dir, $"filesize_restore_{size_str}");
 
             for (int j = 1; j <= 10; j++)
             {
                 Console.WriteLine(@$"* Running benchmark for size {config.Size} with file sizes {j * 10} MB");
                 sw.Restart();
-                var generated = await GenerateData(datagen, config.Size, data_dir, file_size_mb: j * 10);
+                var generated = await GenerateData(datagen, config.Size, data_dir, file_size_mb: j * 10, prefix: "filesize");
                 sw.Stop();
                 using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate_size.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
@@ -547,8 +547,8 @@ namespace Runner
 
             var datagen = GetDatagen(config);
             var size_str = config.Size.ToString().ToLower();
-            string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
-            string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
+            string backup_dir = Path.Combine(data_dir, $"sparsity_backup_{size_str}");
+            string restore_dir = Path.Combine(data_dir, $"sparsity_restore_{size_str}");
 
             for (int j = 0; j < 10; j++)
             {
@@ -556,7 +556,7 @@ namespace Runner
 * Running benchmark for size {config.Size} with sparsity {j * 10}
 *");
                 sw.Restart();
-                var generated = await GenerateData(datagen, config.Size, data_dir, j * 10);
+                var generated = await GenerateData(datagen, config.Size, data_dir, sparsity: j * 10, prefix: "sparsity");
                 sw.Stop();
                 using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate_sparse.csv"), true))
                     writer.WriteLine(sw.ElapsedMilliseconds);
@@ -598,8 +598,6 @@ namespace Runner
                 DeleteBackup(backup_dir, duplicati_options);
                 DeleteAll(backup_dir);
             }
-
-            DeleteAll(data_dir);
 
             return 0;
         }
