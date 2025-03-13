@@ -16,6 +16,8 @@ namespace Runner
             string Hostname,
             int Iterations,
             Operation Operation,
+            string BackupOutput,
+            string RestoreOutput,
             string Output,
             Size Size,
             string Tuning,
@@ -65,16 +67,19 @@ namespace Runner
                 throw new Exception($"Backup failed with errors: {string.Join(Environment.NewLine, results.Errors)}");
         }
 
-        private static (string, string) DefaultDirs(Config config)
+        private static (string, string, string) DefaultDirs(Config config)
         {
-            var dirs = new string[] { "data", "times" };
-            for (int i = 0; i < dirs.Length; i++)
-            {
-                dirs[i] = Path.Combine(config.Output, dirs[i]);
-                if (!Directory.Exists(dirs[i]))
-                    Directory.CreateDirectory(dirs[i]);
-            }
-            return (dirs[0], dirs[1]);
+            var backup_data_dir = Path.Combine(config.BackupOutput, "data");
+            var restore_data_dir = Path.Combine(config.RestoreOutput, "data");
+            var times_dir = Path.Combine(config.Output, "times");
+
+            if (!Directory.Exists(backup_data_dir))
+                Directory.CreateDirectory(backup_data_dir);
+            if (!Directory.Exists(restore_data_dir))
+                Directory.CreateDirectory(restore_data_dir);
+            if (!Directory.Exists(times_dir))
+                Directory.CreateDirectory(times_dir);
+            return (backup_data_dir, restore_data_dir, times_dir);
         }
 
         private static Dictionary<string, string> DefaultOptions()
@@ -140,7 +145,9 @@ namespace Runner
                 new Option<string>(aliases: ["--hostname"], description: "Hostname of the machine running the benchmark", getDefaultValue: () => System.Net.Dns.GetHostName()) { Arity = ArgumentArity.ExactlyOne },
                 new Option<int>(aliases: ["--iterations", "-i"], description: "Number of iterations", getDefaultValue: () => 1),
                 new Option<Operation>(aliases: ["--operation"], description: "Operation to perform. Should be one of: datasetonly, filesizes, regular, sparsity, tuning", getDefaultValue: () => Operation.Regular) { Arity = ArgumentArity.ExactlyOne },
-                new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the generated files and the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--output", "-o"], description: "Output directory to hold the the results", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--backup-output", "-bo"], description: "Output directory to hold the backup data", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
+                new Option<string>(aliases: ["--restore-output", "-ro"], description: "Output directory to hold the restored data", getDefaultValue: () => "..") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Size>(aliases: ["--size", "-s"], description: "Size of the test data. Should one of: all, small, medium, large", getDefaultValue: () => Size.Small) { Arity = ArgumentArity.ExactlyOne },
                 new Option<string>(aliases: ["--tuning"], description: "The concurrency parameters to test. Should be a comma separated string: <FileProcessors>,<VolumeDownloaders>,<VolumeDecryptors>,<VolumeDecompressors>", getDefaultValue: () => "") { Arity = ArgumentArity.ExactlyOne },
                 new Option<Legacy>(aliases: ["--version-to-test", "-vtt"], description: "Version of the restore flow to test. Should be one of: both, new, legacy, prenewbackend. Both runs legacy first, followed by new.", getDefaultValue: () => Legacy.Both){ Arity = ArgumentArity.ExactlyOne }
@@ -286,7 +293,7 @@ namespace Runner
         private static async Task<int> RunDatasetOnly(Config config)
         {
             var sw = new Stopwatch();
-            var (data_dir, times_dir) = DefaultDirs(config);
+            var (data_dir, _, times_dir) = DefaultDirs(config);
 
             Size[] sizes = config.Size == Size.All ? [Size.Small, Size.Medium, Size.Large] : [config.Size];
 
@@ -310,7 +317,7 @@ namespace Runner
             string[] legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
             var duplicati_options = DefaultOptions();
-            var (data_dir, times_dir) = DefaultDirs(config);
+            var (data_dir, _, times_dir) = DefaultDirs(config);
 
             var datagen = GetDatagen(config);
 
@@ -386,7 +393,7 @@ namespace Runner
                 duplicati_options["restore-volume-decryptors"] = tuning[2];
                 duplicati_options["restore-volume-decompressors"] = tuning[3];
             }
-            var (data_dir, times_dir) = DefaultDirs(config);
+            var (backup_data_dir, restore_data_dir, times_dir) = DefaultDirs(config);
 
             var datagen = GetDatagen(config);
 
@@ -396,13 +403,13 @@ namespace Runner
 * Running benchmark for size {size}
 *");
                 var size_str = size.ToString().ToLower();
-                string backup_dir = Path.Combine(data_dir, $"backup_{size_str}");
-                string restore_dir = Path.Combine(data_dir, $"restore_{size_str}");
+                string backup_dir = Path.Combine(backup_data_dir, $"backup_{size_str}");
+                string restore_dir = Path.Combine(restore_data_dir, $"restore_{size_str}");
                 if (!Directory.Exists(backup_dir))
                 {
 
                     sw.Restart();
-                    var generated = await GenerateData(datagen, size, data_dir);
+                    var generated = await GenerateData(datagen, size, backup_data_dir);
                     sw.Stop();
                     using (var writer = new StreamWriter(Path.Combine(times_dir, $"{config.Hostname}_{size_str}_generate.csv"), true))
                         writer.WriteLine(sw.ElapsedMilliseconds);
@@ -521,7 +528,10 @@ namespace Runner
             }
 
             if (config.Cleanup)
-                DeleteAll(data_dir);
+            {
+                DeleteAll(backup_data_dir);
+                DeleteAll(restore_data_dir);
+            }
 
             return 0;
         }
@@ -531,7 +541,7 @@ namespace Runner
             var legacies = ParseLegaciesToRun(config.VersionToTest);
             var sw = new Stopwatch();
             var duplicati_options = DefaultOptions();
-            var (data_dir, times_dir) = DefaultDirs(config);
+            var (data_dir, _, times_dir) = DefaultDirs(config);
 
             var datagen = GetDatagen(config);
             var size_str = config.Size.ToString().ToLower();
@@ -600,7 +610,7 @@ namespace Runner
             var legacy_str = legacies[0];
             var sw = new Stopwatch();
             var duplicati_options = DefaultOptions();
-            var (data_dir, times_dir) = DefaultDirs(config);
+            var (data_dir, _, times_dir) = DefaultDirs(config);
             var datagen = GetDatagen(config);
             var size_str = config.Size.ToString().ToLower();
             if (config.Size == Size.All)
