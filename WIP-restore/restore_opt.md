@@ -1,34 +1,91 @@
-# Speeding up the restore operation
-
-We start by backing up pre-sc-ad to a local folder, as this should remove the upload/download overhead.
+# Speeding up the restore operation by 2x - 8x
 
 This blog post describes the reworked restore flow.
 
-It has been merged in [PR #5728](https://github.com/duplicati/duplicati/pull/5728).
+It was originally merged in [PR #5728](https://github.com/duplicati/duplicati/pull/5728), with bugfixes in [PR #5840](https://github.com/duplicati/duplicati/pull/5840), [PR #5842](https://github.com/duplicati/duplicati/pull/5842), [PR #5886](https://github.com/duplicati/duplicati/pull/5886), [PR #5958](https://github.com/duplicati/duplicati/pull/5958), [PR #6026](https://github.com/duplicati/duplicati/pull/6026), and with additional optimizations in [PR #5983](https://github.com/duplicati/duplicati/pull/5983), [PR #5991](https://github.com/duplicati/duplicati/pull/5991), [PR #6028](https://github.com/duplicati/duplicati/pull/6028).
 
-It has been part of the releases since [Duplicati 2.1.0.103](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.103_canary_2024-12-21) onwards.
+It has been part of the canary releases since [Duplicati 2.1.0.103](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.103_canary_2024-12-21) onwards, with the latest version being [Duplicati 2.1.0.111](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.111_canary_TODO), which includes all of the bugfixes and optimizations mentioned above.
 
-If any issues arise with the new flow, please report them here on the forum and the legacy flow can still be used instead by supplying the option `--restore-legacy=true`.
+The plots generated in this script can be reproduced by running the [benchmark](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-restore/benchmark) and the corresponding [plotting notebook](https://github.com/carljohnsen/duplicati-blogpost/blob/main/WIP-restore/benchmark/plotting.ipynb). TODO update the links post publishing.
+
+If any issues arise with the new flow, please report them here on the forum and the legacy flow can still be used instead by supplying the option `--restore-legacy=true`. The legacy flow is also more memory efficient, so if you're running into memory or disk space issues, you can try the legacy flow.
 
 ## TL:DR;
 
-The legacy restore flow is slow because it is performed sequentially. The restore flow is rewritten to leverage concurrent execution, reducing the restore time by X times on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
+The legacy restore flow is slow because it's performed sequentially. The restore flow is rewritten to leverage concurrent execution, reducing the restore time by 3.80 times on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
 
-- Graph showing the new process network
-- Some graph showing the time reduction
+```mermaid
+flowchart LR;
+    1["Combine filters"];
+    2["Open local DB"];
+    3["Verify local files"];
+
+    subgraph VERIF[" "]
+        3_1["Get list of Volumes"];
+        3_2["Verify volume count"];
+
+        3-->3_1;
+        3_1-->3_2;
+        3_2-->3;
+    end;
+
+    1-->2;
+    2-->3;
+    3-->NETW;
+
+    subgraph NETW["Concurrent network"]
+        direction BT;
+
+        4_1["File Lister"];
+        4_2@{ shape: processes, label: "File Processor" };
+        subgraph BLOCKMAN["Block manager "];
+            4_3_blockhandler@{ shape: processes, label: "Block Handler" };
+            4_3_volumeconsumer["Volume Consumer"];
+            4_3_cache["Block Cache"];
+
+            4_3_volumeconsumer --10--> 4_3_cache;
+            4_3_blockhandler --3--> 4_3_cache;
+            4_3_cache --11--> 4_3_blockhandler;
+        end;
+        subgraph VOLALIGN[" "];
+            4_4["Volume Manager"];
+            4_7@{ shape: processes, label: "Volume Decompressor" };
+        end;
+        style VOLALIGN stroke:none;
+        4_5@{ shape: processes, label: "Volume Downloader" };
+        4_6@{ shape: processes, label: "Volume Decryptor" };
+
+        4_1 --1--> 4_2;
+        4_2 --2--> 4_3_blockhandler;
+        4_2 --2--> 4_3_blockhandler;
+        4_2 --2--> 4_3_blockhandler;
+        4_3_blockhandler --12--> 4_2;
+        4_3_blockhandler --12--> 4_2;
+        4_3_blockhandler --12--> 4_2;
+        4_3_cache --4--> 4_4;
+        4_4 --5--> 4_5;
+        4_5 --6--> 4_6;
+        4_6 --7--> 4_4;
+        4_4 --8--> 4_7;
+        4_7 --9--> 4_3_volumeconsumer;
+    end;
+```
+
+![Results for the medium dataset on the 7975WX](benchmark/figures/threadripper02_medium.png)
+
+![Results for the large dataset on the 7975WX](benchmark/figures/threadripper02_large.png)
 
 ## Machine setup
 
 The following table shows the different machines mentioned:
 
-| Machine                | CPU                                    | RAM                                  | OS                 | .NET    |
-| ---------------------- | -------------------------------------- | ------------------------------------ | ------------------ | ------- |
-| MacBook Pro 2021       | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | macOS Sequoia 15.2 | 8.0.404 |
-| AMD 7975WX             | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | Ubuntu 24.04.1 LTS | 8.0.112 |
-| AMD 1950X              | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | Ubuntu 22.04.4 LTS | 8.0.110 |
-| Intel W5-2445          | (x86_64) 10-core 3.1 GHz (4.6)         | 128 GB DDR5-4800 4-channel ~150 GB/s | Ubuntu 22.04.5 LTS | 8.0.112 |
-| AMD 9800X3D            | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | Windows 11 x64     | 8.0.403 |
-| Raspberry Pi 3 Model B | (ARM64) 4-core 1.2 GHz                 | 1 GB LPDDR2-900 ~6 GB/s              | Raspbian 11        | 8.0.403 |
+| Machine          | CPU                                    | RAM                                  | Disk (theoretical peak)                | OS                   | .NET    |
+| ---------------- | -------------------------------------- | ------------------------------------ | -------------------------------------- | -------------------- | ------- |
+| MacBook Pro 2021 | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | 1 NVMe SSD ~5 GB/s                     | macOS Sequoia 15.3.1 | 8.0.404 |
+| AMD 7975WX       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.1 LTS   | 8.0.114 |
+| AMD 1950X        | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | 2 PCIe 3.0 NVMe SSD in Raid 0 ~ 8 GB/s | Ubuntu 22.04.4 LTS   | 8.0.110 |
+| Intel W5-2445    | (x86_64) 10-core 3.1 GHz (4.6)         | 128 GB DDR5-4800 4-channel ~150 GB/s | 1 PCIe 4.0 NVMe SSD ~8 GB/s            | Ubuntu 22.04.5 LTS   | 8.0.112 |
+| AMD 9800X3D      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | 8.0.403 |
 
 ## Termonology
 
@@ -86,7 +143,6 @@ The legacy restore flow is as follows:
     3. Check that the hash and size matches.
 
 The flow is visualized in the following diagram:
-TODO left-right (LR) or top-down (TD)?
 
 ```mermaid
 flowchart TD;
@@ -303,8 +359,6 @@ flowchart LR;
         subgraph BLOCKMAN["Block manager "];
             4_3_blockhandler@{ shape: processes, label: "Block Handler" };
             4_3_volumeconsumer["Volume Consumer"];
-            %%TODO differentiate between function call and process
-            %%style 4_3_volumeconsumer fill:#f9f;
             4_3_cache["Block Cache"];
 
             4_3_volumeconsumer --10--> 4_3_cache;
@@ -387,46 +441,127 @@ This new flow introduces several tunable parameters to control parallelism, the 
 
 # Results
 
-The new restore flow has been tested on the machines mentioned in the Machine setup section.
+The new restore flow has been tested on the machines outlined in the Machine setup section.
 We perform the following tests:
 
 - **Full restore** - The target directory of the restore is empty.
-- **Partial restore** - The target directory contains some of the files and files that partially match.
-- **No restore** - The target directory contains all of the files in their expected state.
-- **Restore metadata** - The target directory contains all of the files, but the metadata is incorrect and needs to be restored.
+- **Partial restore** - The target directory contains 50 % of untouched files, 25 % of files are missing, and 25 % of files have a single modified block.
+- **No restore** - The target directory contains all of the files in their expected state. Metadata is skipped, so this test should not be fetching from remote storage.
+- **Restore metadata** - The target directory contains all of the files, but each file has an incorrect timestamp, leading to only the metadata being restored.
 
-Each test will be performed with the new flow and the legacy flow, with 5 warmup runs, and 10 measured runs. Each test will also be performed with both the default parameters and with the parameters tuned for maximum throughput on the respective machine. The benchmarks are (unless specified otherwise) performed on local storage, as we're focusing on the execution of the restore process. We'll be using three datasets:
+Each test will be performed with the new flow and the legacy flow, with 10 measured runs. For each configuration, the best and worst times are discarded and the reported times are plotted with error bars. The benchmarks are (unless specified otherwise) performed on local storage, as we're focusing on the execution of the restore process. For Windows we've disabled Windows Defender real-time protection as this does not go well with a disk-stressing benchmark. We'll be using three datasets:
 
-| Dataset        |     Files |   Size | Max file size | Duplication rate |
-| -------------- | --------: | -----: | ------------: | ---------------: |
-| Small dataset  |     1,000 |   1 GB |         10 MB |              20% |
-| Medium dataset |    10,000 |  10 GB |         10 MB |              30% |
-| Large dataset  | 1,000,000 | 100 GB |        100 MB |              40% |
+| Dataset        |      Files |   Size | Max file size | Duplication rate |
+| -------------- | ---------: | -----: | ------------: | ---------------: |
+| Small dataset  |      1,000 |   1 GB |         10 MB |              20% |
+| Medium dataset |     10,000 |  10 GB |        100 MB |              30% |
+| Large dataset  |  1,000,000 | 100 GB |        100 MB |              40% |
+| Huge dataset   | 10,000,000 |  10 TB |          1 GB |              25% |
 
-Files is the target number of files, Size is the target size, and Max file size is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
+'Files' is the target number of files, 'Size' is the target size, and 'Max file size' is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
 
-The internal distribution of how duplicated each duplicated block is follows a gauss distribution, meaning that some blocks will have a lot of duplication, while others will have very little.
+## General results
 
-## Example of tuning the restore process for maximum throughput
+We'll start by presenting the general results of the new restore flow compared to the legacy restore flow. Let's look at the results for the small dataset on the MacBook:
 
-Before we present the results, we'll show an example of how to tune the restore process for maximum throughput. We start by running the restore with the default parameters and the internal profiling enabled. We then analyze the internal profiling to identify the bottleneck processes. We then increase the number of processors for the bottleneck processes and rerun the restore. We repeat this process until we can't increase the throughput any further. Currently this is a manual process, but in the future we hope to automate this process.
+![Results for the small dataset on MacBook](benchmark/figures/macbook_small.png)
 
-Let's look at the results for the small dataset on the MacBook:
+Here we see a significant speedup for the new restore flow compared to the legacy restore flow, yielding a speedup of 2.19x on average. The error bars show the fastest and slowest runs, which are quite close to the average. This indicates that the new restore flow is stable and performs consistently across runs.
 
-- Graph showing a distribution of where time is spent in each of the processes. This is the output of the internal profiling. Given that some processes are parallel, the time reported is the mean time. It is a bargraph with the processes on the x-axis and the time spent on the y-axis. Each bar is divided into sub bars, where the height of the bar is 1, meaning each sub bar is a percentage
+Let's look at the results for the medium dataset:
 
-Here we see that for the default parameters on this particular dataset, the majority of the waiting time goes to the X process, which is the decompressor. In the next step, we increase the number of decompressors by two, and rerun the restore. We then analyze the internal profiling again and see that the waiting time has shifted to the Y process, which is the downloader. We then increase the number of downloaders by two, and rerun the restore. We repeat this process until we can't increase the throughput any further. Looking at the final step, we can see that the total time has been reduced by Z% compared to the default parameters.
+![Results for the medium dataset on MacBook](benchmark/figures/macbook_medium.png)
 
-## Effects of multiple FileProcessors on HDDs
+Here we see the speedup becoming more pronounced, with a speedup of 2.40x on average. The error bars are even tighter than for the small dataset.
+
+Let's look at the results for the large dataset:
+
+![Results for the large dataset on MacBook](benchmark/figures/macbook_large.png)
+
+Where we see a speedup of 1.94x on average.
+And for completeness, we also show the plots for all of the other machines, where the most performant run was the AMD 7975WX on the medium dataset:
+
+![Results for the benchmark on 7975WX](benchmark/figures/threadripper02_all.png)
+
+![Results for the benchmark on 1950X](benchmark/figures/threadripper00_all.png)
+
+![Results for the benchmark on W5-2445](benchmark/figures/iw5_all.png)
+
+![Results for the benchmark on 9800X3D](benchmark/figures/Carl9800_all.png)
+
+There's a small discrepancy in the performance numbers from the Windows machine, which we are yet to investigate. The performance numbers are still within the expected range when comparing relatively to the legacy flow, so we're not too concerned about it.
 
 ## Effects of the sparsity of the data
 
-## Profiling of disk usage, memory consumption, CPU utilization and time spent under different cache parameters.
+One strength of the legacy approach is that it only downloads volumes once, then extracts a block from the volume and patches the target files that need the block.
+This allows for quite efficient use of the extracted blocks, leading to a high deduplication results in higher performance.
+The new approach tries to leverage the same deduplication through the block and volume caches, so let us look at the effect of the deduplication rate on the performance of the two restore flows:
+
+![Absolute results for the sparsity benchmark on MacBook](benchmark/figures/macbook_sparse.png)
+
+Here we see that both flows benefit from higher deduplication rates, and the new flow is consistently faster than the legacy flow.
+Looking at the absolute numbers, the new flow is seemingly less affected by the deduplication rate, as the variance in performance is lower than for the legacy flow.
+However, to be sure, we look at the normalized times, where each flow is scaled to their respective best time:
+
+![Relative results for the sparsity benchmark on MacBook](benchmark/figures/macbook_sparse_normalized.png)
+
+This plot shows that both flows follows the same trend, so we can conclude that the cache system allows for the new flow to benefit from the deduplication rate as well.
+
+## Effects of multiple FileProcessors on HDDs
+
+The new restore flow focuses on sequential writes to disk, which is beneficial for HDDs, especially compared to the legacy restore flow, which (potentially) scatters the block writes across the disk.
+To see the effect of this, we scale the number of FileProcessors on the 9800X3D, which has two additional 3 TB HDDs. We'll be backing up to one disk and restoring to the other disk.
+We'll be using the medium dataset for this test:
+
+![Results for the HDD benchmark on 9800X3D](benchmark/figures/Carl9800_hdd.png)
+
+Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of TODOx on average.
+The disk reaches saturation at around TODO FileProcessors, where the latency of the disk results in diminishing returns.
+
+## Huge dataset
+
+As a final test, we'll try to restore a large dataset, consisting of 10 TiB of data.
+This large dataset is performed on the 1950X, which has two Raid 5 arrays of 8 x 12 TB HDDs, for a total of 16 drives.
+We'll be backing up to one of the arrays and restoring to the other array.
+This shows that even though we are limited by slow write speeds, the new restore flow is still faster than the legacy restore flow:
+
+![Results for the huge dataset on 1950X](benchmark/figures/threadripper00_huge.png)
+
+The new restore flow is TODOx faster than the legacy restore flow on average, showing that the new restore flow is able to utilize the system resources more efficiently than the legacy restore flow.
+This results in an absolute reduction of TODO hours for the huge dataset, which is a significant improvement.
+
+As additional info, the data took TODO hours to generate and TODO hours to backup.
+
+# Future work
+
+## Automatic tuning of parameters
+
+The default parameters for the new restore flow works reasonably well for most setups, but there is still room for improvement.
+Our own lightweight testing shows that there's about an extra 10 % of performance to gain by tuning the parameters.
+However, the parameters aren't widely applicable across different setups, and the current process is quite manual.
+Future work will have a tool that'll automatically tune the parameters for the user's setup, by running a few test restores and adjusting the parameters based on the results.
+
+## Direct storage access
+
+While the new restore flow is faster, we're still not achieving the maximum throughput of the storage.
+One reason could be that the storage is being cached by the operating system, leading to suboptimal performance.
+This is because the data is not being used frequently enough to reap the benefits of the cache.
+The data written to the target file is no longer needed, so there's no reason to keep it in the cache.
+The same goes for the volumes, where only the final decrypted volume is accessed multiple times.
+For SATA drives and the like, the speeds are so low that the cache is not a bottleneck, but for high-speed NVMe drives, the cache can be a bottleneck.
+
+To alleviate this, we could use direct storage access (`O_DIRECT` on NIX systems and `FILE_FLAG_NO_BUFFERING` on Windows systems), bypassing the operating system cache.
+Previous projects have shown that this is a requirement to reach the maximum throughput of the storage.
+It's a non-trivial task, as it requires the data to be aligned correctly and the sizes to be multiples of the block size of the storage, which is why it's being left for future work.
+
+## Deeper investigation of the Windows performance
+
+The performance numbers from the Windows machine are slightly off (in absolute numbers) compared to the other machines. This is strange because the CPU is quite powerful and the storage is fast.
+This may be attributed to the Direct Storage access, but at the time of writing we're unsure of the cause.
 
 # Conclusion
 
-automated parameter tuning
-
-actual parallel backend interactions.
-
-It's great - buy now.
+In this blog post, we've presented the new restore flow, which is a rework of the legacy restore flow to leverage concurrent execution and reduce the restore time.
+The new flow is able to reduce the restore time by 3.80 times on average across all benchmarks, at the cost of increased memory, disk, and CPU utilization.
+The new flow can be tuned to balance the resource usage and the restore time, by adjusting the cache sizes and the number of parallel processes.
+The new flow is able to utilize the system resources more aggressively compared to the legacy restore flow, leading to a faster restore time.
