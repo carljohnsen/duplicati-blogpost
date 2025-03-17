@@ -12,7 +12,7 @@ If any issues arise with the new flow, please report them on the forum. You can 
 
 ## TL;DR
 
-The legacy restore flow is slow because it's performed sequentially. The restore flow has been rewritten to leverage concurrent execution, reducing restore time by an average of 3.80x on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
+The legacy restore flow is slow because it's performed sequentially. The restore flow has been rewritten to leverage concurrent execution, reducing restore time by an average of 3.80x at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
 
 ```mermaid
 flowchart LR;
@@ -280,10 +280,10 @@ For setups with limited memory, this may be a good trade-off, since the restore 
 
 However, these caches are only really utilized when there's high deduplication between files, so the caches shouldn't grow too large.
 
-Future work will analyze block and volume deduplication across files to optimize cache utilization and maximize sharing.
+Future work will analyze block and volume deduplication across files to optimize cache utilization and maximize data reuse.
 The worst case can occur when the order of files is such that the caches don't get auto evicted and the system runs out of memory or disk space.
 The aforementioned future work would alleviate this problem.
-However, in our testing, this was rarely an issue.
+However, our tests showed that this was rarely an issue, primarily due to the test machines having a large amount of system memory.
 
 ## Parallelization and overlapping execution
 
@@ -312,7 +312,7 @@ The new flow is as follows:
       9. Restore the metadata.
    3. The block manager will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
       1. If the requested block is in the cache (in memory), it will respond with the block from the cache.
-      2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the amount of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
+      2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the number of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
    4. The volume manager will respond to volume requests, caching the volumes on disk. The block manager is keeping count of the number of times each block is needed and will notify the volume manager when a volume can be evicted from the cache.
       1. If the volume is in the cache (on disk), it will request the block to be extracted from the volume.
       2. If the volume is not in the cache (on disk), it will request the volume to be downloaded. Once the volume is downloaded, it will request the block to be extracted from the volume.
@@ -508,8 +508,8 @@ There's a small discrepancy in the performance numbers from the Windows machine,
 
 ## Effects of the sparsity of the data
 
-One strength of the legacy approach is that it downloads each volumes only once, then extracts blocks and patches the corresponding target files.
-This allows for quite efficient use of the extracted blocks, leading to a high deduplication results in higher performance.
+One strength of the legacy approach is that it downloads each volume only once, then extracts blocks and patches the corresponding target files.
+This allows for quite efficient use of the extracted blocks, leading to high deduplication and improved performance.
 The new approach tries to leverage the same deduplication through the block and volume caches, so let us look at the effect of the deduplication rate on the performance of the two restore flows:
 
 ![Absolute results for the sparsity benchmark on MacBook](benchmark/figures/macbook_sparse.png)
@@ -531,7 +531,7 @@ We'll be using the medium dataset for this test:
 ![Results for the HDD benchmark on 9800X3D](benchmark/figures/hdd_medium.png)
 
 Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of 1.51x on average even though both flows are able to keep the target disk at almost 100% utilization.
-This means that the added parallelism of the new restore flow is neglible as both are limited by the disk speed.
+This means that the added parallelism of the new restore flow is negligible as both are limited by the disk speed.
 We still observe a performance gain, which is due to the on-the-fly verification of files, which eliminates the need for an additional pass over the data.
 
 There is still some merit in running multiple FileProcessors, as the new restore flow reaches the saturation point at 4 FileProcessors.
@@ -541,13 +541,13 @@ The benefits become more pronounced as the load to disk decreases, which we can 
 ## Preallocation on HDDs
 
 Preallocation hints the size of the target files to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
-This should be especially beneficial for HDDs, as they are prone to fragmentation.
+This is particularly beneficial for HDDs, which are prone to fragmentation.
 To see the effect of this, we'll be running the medium dataset on the 9800X3D with and without preallocation:
 
 ![Results for the preallocation benchmark on 9800X3D](benchmark/figures/hdd_medium_pre.png)
 
 Here we see a slight speedup for 8 FileProcessors, which doesn't really confirm the hypothesis, as the speedup is within the margin of error.
-However, the preallocation provides a size hint to the filesystem, which can be beneficial its long-term health.
+However, preallocation provides a size hint to the filesystem, which can benefit its long-term health.
 Furthermore, this effect is likely due to the fact that the target disk is quite new and unused, so fragmentation is not as big of an issue as it would be on a disk that has been used for a while.
 Regardless, providing the hint doesn't hurt the performance, so enabling it for HDD based systems is recommended.
 
@@ -563,8 +563,7 @@ Future work will have a tool that'll automatically tune the parameters for the u
 ## Direct storage access
 
 While the new restore flow is faster, we're still not achieving the maximum throughput of the storage.
-One reason could be that the storage is being cached by the operating system, leading to suboptimal performance.
-This is because the data is not being used frequently enough to reap the benefits of the cache.
+One reason could be that the storage is being cached by the operating system, leading to suboptimal performance because the data is not being used frequently enough to reap the benefits of the cache.
 The data written to the target file is no longer needed, so there's no reason to keep it in the cache.
 Once the data is written to the target file, it's no longer needed in the cache.
 The same applies to volumes, where only the final decrypted volume is accessed multiple times.
@@ -576,8 +575,8 @@ It's a non-trivial task, as it requires the data to be aligned correctly and the
 
 ## Deeper investigation of the Windows performance
 
-The performance numbers from the Windows machine are slightly off (in absolute numbers) compared to the other machines. This is strange because the CPU is quite powerful and the storage is fast.
-This may be attributed to the Direct Storage access, but at the time of writing we're unsure of the cause.
+The performance of the Windows machine is slightly lower (in absolute numbers) compared to the other machines. This is strange because the CPU is quite powerful and the storage is fast.
+This may be attributed to the Direct Storage access, but at the time of writing we're unsure of the exact cause.
 
 # Conclusion
 
