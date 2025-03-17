@@ -4,9 +4,9 @@ This blog post describes the reworked restore flow.
 
 It was originally merged in [PR #5728](https://github.com/duplicati/duplicati/pull/5728), with bugfixes in [PR #5840](https://github.com/duplicati/duplicati/pull/5840), [PR #5842](https://github.com/duplicati/duplicati/pull/5842), [PR #5886](https://github.com/duplicati/duplicati/pull/5886), [PR #5958](https://github.com/duplicati/duplicati/pull/5958), [PR #6026](https://github.com/duplicati/duplicati/pull/6026), and with additional optimizations in [PR #5983](https://github.com/duplicati/duplicati/pull/5983), [PR #5991](https://github.com/duplicati/duplicati/pull/5991), [PR #6028](https://github.com/duplicati/duplicati/pull/6028).
 
-It has been part of the canary releases since [Duplicati 2.1.0.103](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.103_canary_2024-12-21) onwards, with the latest version being [Duplicati 2.1.0.111](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.111_canary_TODO), which includes all of the bugfixes and optimizations mentioned above.
+It has been part of the canary releases since [Duplicati 2.1.0.103](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.103_canary_2024-12-21) onwards, with the latest version being [Duplicati 2.1.0.111](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.111_canary_2025-03-15), which includes all of the bugfixes and optimizations mentioned above.
 
-The plots generated in this script can be reproduced by running the [benchmark](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-restore/benchmark) and the corresponding [plotting notebook](https://github.com/carljohnsen/duplicati-blogpost/blob/main/WIP-restore/benchmark/plotting.ipynb). TODO update the links post publishing.
+The plots generated in this script can be reproduced by running the [benchmark](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-restore/benchmark) and the corresponding [plotting notebook](https://github.com/carljohnsen/duplicati-blogpost/blob/main/WIP-restore/benchmark/plotting.ipynb).
 
 If any issues arise with the new flow, please report them here on the forum and the legacy flow can still be used instead by supplying the option `--restore-legacy=true`. The legacy flow is also more memory efficient, so if you're running into memory or disk space issues, you can try the legacy flow.
 
@@ -399,13 +399,13 @@ A major benefit is that the post verification step has been removed as it's now 
 
 The whole network shuts down starting at the filelister, once it runs out of files to request.
 Then each fileprocessor shuts down when trying to request a file from the filelister, which is no longer available.
-Once all fileprocessors have shut down, the block cache signals the volume cache to shut down, which in turn shuts downn the volume downloaders, volume decryptors, and volume decompressors.
+Once all fileprocessors have shut down, the block cache signals the volume cache to shut down, which in turn shuts down the volume downloaders, volume decryptors, and volume decompressors.
 Once that subnetwork has shut down, the block cache shuts down, which is the final process to shut down.
 
 This new flow alleviates the problems of the legacy flow, while retaining most of its benefits:
 
 - While the steps are no longer performed in a clearly separated sequence, each step is still separated into a process allowing for a clear separation of concerns.
-- The steps are executed concurrently, allowing for overlapping execution and full utilization of system resources.
+- The steps are executed concurrently, allowing for overlapping execution and better utilization of system resources.
 - The block writes are sequential to a file, leading to a more disk-friendly access pattern per file written.
 - The cache system ensures that each block and volume is only downloaded, decrypted, and decompressed once
   (assuming that cache entries aren't evicted too early due to memory limitations).
@@ -413,9 +413,18 @@ This new flow alleviates the problems of the legacy flow, while retaining most o
 
 It has the following drawbacks:
 
-- The flow is more complex, as it is now a network of processes that communicate through channels. This can, in the worst case, lead to deadlocks where the system is stalled without any progression.
-- The cache system needs to be managed, which can be a complex task, and that entails increased resource consumption.
-- The flow is less stable, as it is a new implementation that hasn't been tested as thoroughly as the legacy flow.
+- The flow is more complex, as it is now a network of processes that communicate through channels. This can, in the worst case, lead to deadlocks where the system is stalled without any progression. Hewever, we have added timeout detection that will warn the user if the system is seemingly stalled. We have also tried to ensure that any error will terminate the network, so the system will not be stuck indefinitely.
+- The cache system needs to be managed, which can be a complex task, and that entails increased resource consumption. However, in our testing, most of the work spent was not managing cache, but actual work; downloading, decrypting, decompressing, and patching blocks.
+- The flow is less stable, as it is a new implementation that hasn't been tested as thoroughly as the legacy flow. Given more time and use, confidence in the new flow will increase.
+
+## Additional optimizations
+
+In addition to the new flow, we've added several optimizations to the restore flow:
+
+- **Preallocation**: The target files can be preallocated, hinting the size to the filesystem. This can benefit the restore speed on some systems, as it hints the size to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
+- **Parallel downloads**: The BackendManager now supports parallel downloads, allowing for multiple volumes to be downloaded at the same time. This can increase the throughput of the restore operation, especially on high-speed connections. In the benchmarks of this post, the backend was a local filesystem, so this optimization really sped up the restore operation.
+- **Parallel database connections**: With respect to the backup database, the restore operation is a non-intrusive operation, where the database is only being read from. As such, we can open multiple connections to the database, allowing for faster access to the database.
+- **Memory pool**: The memory pool is a shared memory pool that is used to allocate memory for the blocks. Rather than using a new memory allocation for each block, the memory pool is used to allocate memory for the blocks, which is returned after use. This alleviates garbage collection penalties as a result of many small memory allocations.
 
 ## Tunable parameters
 
@@ -432,6 +441,7 @@ This new flow introduces several tunable parameters to control parallelism, the 
 - `--restore-volume-decompressors=n_cores/2`: The number of volume decompressors to run in parallel. The default is half the number of cores available on the machine.
 - `--restore-volume-decryptors=n_cores/2`: The number of volume decryptors to run in parallel. The default is half the number of cores available on the machine.
 - `--restore-volume-downloaders=n_cores/2`: The number of volume downloaders to run in parallel. The default is half the number of cores available on the machine.
+- `--restore-channel-buffer-size=8`: The size of the channel buffer. The default is 8. This can be increased to allow for more messages to be in flight, potentially increasing the throughput of the restore operation at the cost of increased memory usage.
 
 ### General
 
@@ -451,12 +461,11 @@ We perform the following tests:
 
 Each test will be performed with the new flow and the legacy flow, with 10 measured runs. For each configuration, the best and worst times are discarded and the reported times are plotted with error bars. The benchmarks are (unless specified otherwise) performed on local storage, as we're focusing on the execution of the restore process. For Windows we've disabled Windows Defender real-time protection as this does not go well with a disk-stressing benchmark. We'll be using three datasets:
 
-| Dataset        |      Files |   Size | Max file size | Duplication rate |
-| -------------- | ---------: | -----: | ------------: | ---------------: |
-| Small dataset  |      1,000 |   1 GB |         10 MB |              20% |
-| Medium dataset |     10,000 |  10 GB |        100 MB |              30% |
-| Large dataset  |  1,000,000 | 100 GB |        100 MB |              40% |
-| Huge dataset   | 10,000,000 |  10 TB |          1 GB |              25% |
+| Dataset        |     Files |   Size | Max file size | Duplication rate |
+| -------------- | --------: | -----: | ------------: | ---------------: |
+| Small dataset  |     1,000 |   1 GB |         10 MB |              20% |
+| Medium dataset |    10,000 |  10 GB |        100 MB |              30% |
+| Large dataset  | 1,000,000 | 100 GB |        100 MB |              40% |
 
 'Files' is the target number of files, 'Size' is the target size, and 'Max file size' is the maximum file size a single file can have. Each of these values are targets, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
 
@@ -467,6 +476,12 @@ We'll start by presenting the general results of the new restore flow compared t
 ![Results for the small dataset on MacBook](benchmark/figures/macbook_small.png)
 
 Here we see a significant speedup for the new restore flow compared to the legacy restore flow, yielding a speedup of 2.19x on average. The error bars show the fastest and slowest runs, which are quite close to the average. This indicates that the new restore flow is stable and performs consistently across runs.
+
+If we look at a profiled run of the legacy flow, we see that `3641 + 1541 + 839 = 6021 ms` of the time is spent on restore, metadata and verification in the new restore flow, compared to the total 7408 ms. This means that ~83 percent of the workload is parallelizable. If we apply Armdahl's law:
+
+![Armdahl's law](benchmark/figures/macbook_small_speedup.png)
+
+We see that a speedup of 2.19 correlates with 3 cores being utilized. This is not quite as far as we'd like, but that was assuming that the entire workload was parallelizable. In practice, there are some sequential parts of the workload, such as the network and disk I/O, that are not parallelizable, so this rough estimate of the speedup is seemingly quite good.
 
 Let's look at the results for the medium dataset:
 
@@ -479,7 +494,7 @@ Let's look at the results for the large dataset:
 ![Results for the large dataset on MacBook](benchmark/figures/macbook_large.png)
 
 Where we see a speedup of 1.94x on average.
-And for completeness, we also show the plots for all of the other machines, where the most performant run was the AMD 7975WX on the medium dataset:
+And for completeness, we also show the plots for all of the other machines, where the most performant run was the AMD 7975WX on the medium dataset with a speedup of 8.65x on average:
 
 ![Results for the benchmark on 7975WX](benchmark/figures/threadripper02_all.png)
 
@@ -505,32 +520,36 @@ However, to be sure, we look at the normalized times, where each flow is scaled 
 
 ![Relative results for the sparsity benchmark on MacBook](benchmark/figures/macbook_sparse_normalized.png)
 
-This plot shows that both flows follows the same trend, so we can conclude that the cache system allows for the new flow to benefit from the deduplication rate as well.
+This plot shows that both flows follows the same trend, so we can conclude that the cache system allows for the new flow also leverages the deduplication rate.
 
 ## Effects of multiple FileProcessors on HDDs
 
-The new restore flow focuses on sequential writes to disk, which is beneficial for HDDs, especially compared to the legacy restore flow, which (potentially) scatters the block writes across the disk.
+The new restore flow focuses on sequential writes to disk, which is beneficial for HDDs, especially compared to the legacy restore flow, which scatter the block writes across the disk.
 To see the effect of this, we scale the number of FileProcessors on the 9800X3D, which has two additional 3 TB HDDs. We'll be backing up to one disk and restoring to the other disk.
 We'll be using the medium dataset for this test:
 
-![Results for the HDD benchmark on 9800X3D](benchmark/figures/Carl9800_hdd.png)
+![Results for the HDD benchmark on 9800X3D](benchmark/figures/hdd_medium.png)
 
-Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of TODOx on average.
-The disk reaches saturation at around TODO FileProcessors, where the latency of the disk results in diminishing returns.
+Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of TODOx on average even though both flows are able to keep the target disk at almost 100% utilization.
+This means that the added parallelism of the new restore flow is neglible as both are limited by the disk speed.
+We do still have some gain in performance, which is due to the on-the-fly verification of files, which saves us an entire pass over the data.
 
-## Huge dataset
+There is still some merit in running multiple FileProcessors, as the new restore flow reaches the saturation point at 4 FileProcessors.
+The disk reaches saturation at around 4 FileProcessors, where the latency of the disk results in diminishing returns.
+The benefits become more pronounced as the load to disk decreases, which we can see in the "no restore" benchmark.
 
-As a final test, we'll try to restore a large dataset, consisting of 10 TiB of data.
-This large dataset is performed on the 1950X, which has two Raid 5 arrays of 8 x 12 TB HDDs, for a total of 16 drives.
-We'll be backing up to one of the arrays and restoring to the other array.
-This shows that even though we are limited by slow write speeds, the new restore flow is still faster than the legacy restore flow:
+## Preallocation on HDDs
 
-![Results for the huge dataset on 1950X](benchmark/figures/threadripper00_huge.png)
+Preallocation hints the size of the target files to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
+This should be especially beneficial for HDDs, as they are prone to fragmentation.
+To see the effect of this, we'll be running the medium dataset on the 9800X3D with and without preallocation:
 
-The new restore flow is TODOx faster than the legacy restore flow on average, showing that the new restore flow is able to utilize the system resources more efficiently than the legacy restore flow.
-This results in an absolute reduction of TODO hours for the huge dataset, which is a significant improvement.
+![Results for the preallocation benchmark on 9800X3D](benchmark/figures/hdd_medium_pre.png)
 
-As additional info, the data took TODO hours to generate and TODO hours to backup.
+Here we see a slight speedup for 8 FileProcessors, which doesn't really confirm the hypothesis, as the speedup is within the margin of error.
+However, the preallocation does hint the size of the files to the filesystem, which can be beneficial for the long-term health of the filesystem.
+Furthermoree, this effect is likely due to the fact that the target disk is quite new and unused, so fragmentation is not as big of an issue as it would be on a disk that has been used for a while.
+Regardless, providing the hint doesn't hurt the performance, so enabling it for HDD based systems is recommended.
 
 # Future work
 
