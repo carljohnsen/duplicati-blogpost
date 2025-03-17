@@ -97,14 +97,14 @@ We'll be using the following terms in this post:
 - _Target file_: The target file that is being restored. It may be the same path as source, depending on the `--restore-path` parameter.
 - _File filter_: The filter that is used to select which files to restore. For example, for a full restore, the filter would be `"*"`.
 - _Local_: The machine that is performing the restore. It may be the same machine as the backup was performed on, but it doesn't have to be.
-- _Remote_: The provider storing the backup. E.g. Amazon S3, local file, an SSH server, ...
+- _Remote_: The provider storing the backup. E.g. Amazon S3, local file, an SSH server, etc. In the benchmarks in this blog post, the remote storage is local storage.
 - _Local database_: The database that keeps track of which files a backup contains, which blocks make up each file, and in which volumes the blocks are stored.
 - _Flow_: A sequence of processing steps that are performed in a specific order. A flow can be sequential, parallel, or a combination of both.
 - _Legacy flow_: The restore flow that has been in use for many years.
 - _New flow_: The restore flow that has been rewritten to be parallelized and is the subject of this blog post.
 - _[Communicating Sequential Processes (CSP)](https://www.cs.cmu.edu/~crary/819-f09/Hoare78.pdf)_: A programming paradigm that models concurrent systems as a network of independent processes that communicate through channels. In Duplicati, the CSP library [CoCoL](https://github.com/kenkendk/cocol) is used, but in principle any CSP library could be used. It was chosen since it is already being used in Duplicati, especially in the backup flow.
 - _Process_: A CSP process that sequentially performs a specific task, only sharing data through channels. A process can be a thread, a coroutine, or any other form of concurrent execution.
-- _Channel_: A CSP channel that is used to communicate between processes. A message can be any object. A channel can be unbuffered, meaning a synchronous/rendezvous channel where the sender and receiver must be ready to communicate, or buffered, meaning an asynchronous channel where the sender can send a message without the receiver being ready to receive it up to a certain buffer size.
+- _Channel_: A CSP channel that is used to communicate between processes. A message can be any object. A channel can be unbuffered, meaning a synchronous/rendezvous channel where the sender and receiver must be ready to communicate, or buffered, meaning an asynchronous channel where the sender can send a message without the receiver being ready to receive it up to a certain buffer size. In the benchmarks in this blog post, the channels are buffered.
 
 # The old restore flow
 
@@ -118,9 +118,9 @@ The legacy restore flow is as follows:
    2. Verify that there are no missing or unexpected extra volumes.
 4. Prepare the block and file list.
 5. Create the directory structure.
-6. Scan the existing target files.
-7. Scan for existing source files.
-8. Patch with local blocks.
+6. Scan the existing target files for existing blocks.
+7. Scan for existing source files for existing blocks.
+8. Patch target files with local blocks.
 9. Get the list of required volumes to download.
 10. For each volume:
     1. Download the volume.
@@ -283,7 +283,7 @@ However, these caches are only really utilized when there's high deduplication b
 Future work will analyze block and volume deduplication across files to optimize cache utilization and maximize data reuse.
 The worst case can occur when the order of files is such that the caches don't get auto evicted and the system runs out of memory or disk space.
 The aforementioned future work would alleviate this problem.
-However, our tests showed that this was rarely an issue, primarily due to the test machines having a large amount of system memory.
+However, our tests showed that this was rarely an issue, but that may be due to the test machines having a large amount of system memory.
 
 ## Parallelization and overlapping execution
 
@@ -299,8 +299,8 @@ The new flow is as follows:
    1. Get the list of remote volumes.
    2. Verify that there are no missing or unexpected extra volumes.
 4. Start the network of concurrent processes.
-   1. The filelister process lists the files that need to be restored.
-   2. The fileprocessor will restore the files.
+   1. The `FileLister` process lists the files that need to be restored.
+   2. The `FileProcessor` will restore the files.
       1. Receive a filename
       2. Figure out which blocks are needed for the file.
       3. Check how many blocks the target file already has, as they don't need to be restored.
@@ -310,27 +310,27 @@ The new flow is as follows:
       7. Verify that the target file matches the expected size and hash.
       8. Request the metadata blocks.
       9. Restore the metadata.
-   3. The block manager will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
+   3. The `BlockManager` will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
       1. If the requested block is in the cache (in memory), it will respond with the block from the cache.
-      2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the number of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
-   4. The volume manager will respond to volume requests, caching the volumes on disk. The block manager is keeping count of the number of times each block is needed and will notify the volume manager when a volume can be evicted from the cache.
+      2. If the requested block is not in the cache (in memory), it will request the block from the `VolumeManager`. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the number of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the `VolumeManager` when the volume can be evicted from its cache.
+   4. The `VolumeManager` will respond to volume requests, caching the volumes on disk. The `BlockManager` is keeping count of the number of times each block is needed and will notify the `VolumeManager` when a volume can be evicted from the cache.
       1. If the volume is in the cache (on disk), it will request the block to be extracted from the volume.
       2. If the volume is not in the cache (on disk), it will request the volume to be downloaded. Once the volume is downloaded, it will request the block to be extracted from the volume.
-   5. The volume downloader will download the volume.
+   5. The `VolumeDownloader` will download the volume.
       1. Receive a volume request.
       2. Download the volume.
       3. Send the downloaded volume to the volume decryptor.
-   6. The volume decryptor will decrypt the volume.
+   6. The `VolumeDecryptor` will decrypt the volume.
       1. Receive a volume.
       2. Decrypt the volume.
       3. Send the decrypted volume to the volume cache.
-   7. The volume decompressor will decompress the volume.
+   7. The `VolumeDecompressor` will decompress the volume.
       1. Receive a volume.
       2. Extract the block from the volume.
       3. Verify that the block matches the expected size and hash.
       4. Send the extracted block to the block cache.
 
-The flow is visualized in the following diagram:
+The flow is visualized in the following diagram. Each number on the arrows represents the order of the messages sent between the processes for a single request:
 
 ```mermaid
 flowchart LR;
@@ -573,10 +573,16 @@ To alleviate this, we could use direct storage access (`O_DIRECT` on NIX systems
 Previous projects indicate that direct storage access is necessary to achieve maximum throughput.
 It's a non-trivial task, as it requires the data to be aligned correctly and the sizes to be multiples of the block size of the storage, which is why it's being left for future work.
 
+## Smart ordering of files to restore
+
+As outlined "Scattered block writes", the order of the files could be arranged to maximize the cache utilization while minimizing the time a block and/or volume is kept in the cache.
+This would require a more in-depth analysis of the deduplication across files, which is left for future work.
+The current strategy is to restore larger files first, as they're more likely to share blocks with other files, but this is a heuristic and not a guarantee.
+
 ## Deeper investigation of the Windows performance
 
 The performance of the Windows machine is slightly lower (in absolute numbers) compared to the other machines. This is strange because the CPU is quite powerful and the storage is fast.
-This may be attributed to the Direct Storage access, but at the time of writing we're unsure of the exact cause.
+This may be attributed to the lack of direct storage access, but at the time of writing we're unsure of the exact cause.
 
 # Conclusion
 
