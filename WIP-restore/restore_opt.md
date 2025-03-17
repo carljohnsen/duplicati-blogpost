@@ -530,7 +530,7 @@ We'll be using the medium dataset for this test:
 
 ![Results for the HDD benchmark on 9800X3D](benchmark/figures/hdd_medium.png)
 
-Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of TODOx on average even though both flows are able to keep the target disk at almost 100% utilization.
+Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of 1.51x on average even though both flows are able to keep the target disk at almost 100% utilization.
 This means that the added parallelism of the new restore flow is neglible as both are limited by the disk speed.
 We do still have some gain in performance, which is due to the on-the-fly verification of files, which saves us an entire pass over the data.
 
