@@ -683,7 +683,8 @@ namespace Runner
                     duplicati_options["restore-channel-buffer-size"] = "4096";
                     duplicati_options["restore-cache-max"] = "64gb";
                     duplicati_options["internal-profiling"] = "true";
-                    duplicati_options["log-file-log-filter"] = "+[.*InternalTimings.*]:+[.*RestoreNetwork.*]:-[.*]";
+                    if (config.VersionToTest != Legacy.Legacy)
+                        duplicati_options["log-file-log-filter"] = "+[.*InternalTimings.*]:+[.*RestoreNetwork.*]:-[.*]";
                     duplicati_options["log-file-log-level"] = "Profiling";
                     duplicati_options["log-file"] = log_file;
                     duplicati_options["restore-file-processors"] = tuning[0];
@@ -710,6 +711,13 @@ namespace Runner
 
                         Console.Write($"\r{i}/{config.Iterations}");
                         RestoreData(backup_dir, restore_dir, duplicati_options, legacy_str);
+
+                        if (config.VersionToTest == Legacy.Legacy)
+                        {
+                            Console.WriteLine();
+                            Console.WriteLine("Skipping log parsing for legacy version - no profiling data available");
+                            return 0;
+                        }
 
                         using var reader = new StreamReader(log_file);
                         string? line;
