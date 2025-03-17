@@ -12,7 +12,7 @@ If any issues arise with the new flow, please report them on the forum. You can 
 
 ## TL;DR
 
-The legacy restore flow is slow because it's performed sequentially. The restore flow is rewritten to leverage concurrent execution, reducing the restore time by 3.80 times on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
+The legacy restore flow is slow because it's performed sequentially. The restore flow has been rewritten to leverage concurrent execution, reducing restore time by an average of 3.80x on average at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
 
 ```mermaid
 flowchart LR;
@@ -87,7 +87,7 @@ The following table shows the different machines mentioned:
 | Intel W5-2445    | (x86_64) 10-core 3.1 GHz (4.6)         | 128 GB DDR5-4800 4-channel ~150 GB/s | 1 PCIe 4.0 NVMe SSD ~8 GB/s            | Ubuntu 22.04.5 LTS   | 8.0.112 |
 | AMD 9800X3D      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | 8.0.403 |
 
-## Termonology
+## Terminology
 
 We'll be using the following terms in this post:
 
@@ -272,18 +272,18 @@ Furthermore, the extraction of blocks from the volumes are performed in memory w
 
 The only problem that this approach introduces is that the caching system needs to be managed, which can be a complex task.
 For systems with limited memory and disk space, we provide tunable parameters to control the size of the caches.
-This allows the user to trade off between speed and resource usage.
+This allows the user to balance speed and resource usage.
 If the volume cache is small, the system will download volumes multiple times.
-For setups with a high-speed remote connection, this good trade-off may be beneficial.
+For setups with a high-speed remote connection, this trade-off may be beneficial.
 If the block cache is small, the system will decompress blocks multiple times.
 For setups with limited memory, this may be a good trade-off, since the restore operation is still able to complete, albeit slower than with the caches fully utilized.
 
 However, these caches are only really utilized when there's high deduplication between files, so the caches shouldn't grow too large.
 
-Future work will analyze the deduplication of the blocks and the volumes across files, to further optimize the cache utilization by restoring the files in order to maximize sharing.
+Future work will analyze block and volume deduplication across files to optimize cache utilization and maximize sharing.
 The worst case can occur when the order of files is such that the caches don't get auto evicted and the system runs out of memory or disk space.
 The aforementioned future work would alleviate this problem.
-However, in our testing (futher down in this post) this was rarely an issue.
+However, in our testing, this was rarely an issue.
 
 ## Parallelization and overlapping execution
 
@@ -312,7 +312,7 @@ The new flow is as follows:
       9. Restore the metadata.
    3. The block manager will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
       1. If the requested block is in the cache (in memory), it will respond with the block from the cache.
-      2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests are lower than the amount of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
+      2. If the requested block is not in the cache (in memory), it will request the block from the volume manager. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the amount of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the volume manager when the volume can be evicted from the cache.
    4. The volume manager will respond to volume requests, caching the volumes on disk. The block manager is keeping count of the number of times each block is needed and will notify the volume manager when a volume can be evicted from the cache.
       1. If the volume is in the cache (on disk), it will request the block to be extracted from the volume.
       2. If the volume is not in the cache (on disk), it will request the volume to be downloaded. Once the volume is downloaded, it will request the block to be extracted from the volume.
@@ -395,12 +395,12 @@ With this setup, the processes in step 4 can run asynchronously, allowing for ov
 Furthermore, some of the processes can run in parallel, allowing for using more system resources at the bottleneck steps.
 In particular, the core work of downloading (4.5 Volume Downloader), decrypting (4.6 Volume Decryptor), decompressing (4.7 Volume Decompresor), and patching blocks (4.1 File Processor) is parallelized. Each of these steps can be scaled individually to maximize the utilization of the system resources.
 
-A major benefit is that the post verification step has been removed as it's now performed on the fly during the restore flow. This was separated in the legacy flow as the block writes were scattered, meaning each file was not ensured fully restored until the end of the flow. In the new flow, each File Processor knows exactly when each file is fully restored and can thus verify while it is being restored.
+A major benefit is the removal of the post verification step, as verification is now performed on the fly during the restore flow. This was separated in the legacy flow as the block writes were scattered, meaning each file was not ensured fully restored until the end of the flow. In the new flow, each File Processor knows exactly when each file is fully restored and can thus verify while it is being restored.
 
 The entire network shuts down in sequence, beginning with the File Lister, once it runs out of files to request.
 Then each File Processor shuts down when trying to request a file from the File Lister, which is no longer available.
 Once all File Processors have shut down, the Block Manager signals the Volume Manager to shut down, which in turn shuts down the Volume Downloaders, Volume Decryptors, and Volume Decompressors.
-Once that subnetwork has shut down, the Block Manager shuts down, which is the final process to shut down.
+Once that subnetwork has shut down, the Block Manager follows as the final process to terminate.
 
 This new flow alleviates the problems of the legacy flow, while retaining most of its benefits:
 
@@ -409,11 +409,11 @@ This new flow alleviates the problems of the legacy flow, while retaining most o
 - The block writes are sequential to a file, leading to a more disk-friendly access pattern per file written.
 - The caching system ensures that each block and volume is only downloaded, decrypted, and decompressed once
   (assuming that cache entries aren't evicted too early due to memory limitations).
-- The verification is now integrated into the restore flow.
+- Verification is now performed as part of the restore flow.
 
 It has the following drawbacks:
 
-- The flow is more complex, as it is now a network of processes that communicate through channels. This can, in the worst case, lead to deadlocks where the system is stalled without any progression. However, we have added timeout detection to warn the user if the system stalls. We have also tried to ensure that any error will terminate the network, so the system will not be stuck indefinitely.
+- The new flow is more complex as it consists of a network of processes communicating through channels. This can, in the worst case, lead to deadlocks where the system is stalled without any progression. However, we have added timeout detection to warn the user if the system stalls. We have also tried to ensure that any error will terminate the network, so the system will not be stuck indefinitely.
 - The caching system needs to be managed, which can be a complex task, and that entails increased resource consumption. However, in our testing, most of the work spent was not managing cache, but actual work; downloading, decrypting, decompressing, and patching blocks.
 - The flow is less stable, as it is a new implementation that hasn't been tested as thoroughly as the legacy flow. Given more time and use, confidence in the new flow will increase.
 
@@ -423,7 +423,7 @@ In addition to the new flow, we've added several optimizations to the restore fl
 
 - **Preallocation**: The target files can be preallocated, hinting the size to the filesystem. This can benefit the restore speed on some systems, as it hints the size to the filesystem, potentially allowing for more efficient file allocation (e.g. less fragmentation).
 - **Parallel downloads**: The BackendManager now supports parallel downloads, allowing for multiple volumes to be downloaded at the same time. This can increase the throughput of the restore operation, especially on high-speed connections. In the benchmarks of this post, the backend was a local filesystem, so this optimization really sped up the restore operation.
-- **Parallel database connections**: With respect to the backup database, the restore operation is a non-intrusive operation, where the database is only being read from. As such, we can open multiple connections to the database, allowing for faster access to the database.
+- **Parallel database connections**: Regarding the backup database, the restore operation is non-intrusive, as it only involves reading from the database. As such, we can open multiple connections to the database, allowing for faster access to the database.
 - **Memory pool**: The memory pool is a shared allocation system that is used to allocate memory for the blocks. Rather than using a new memory allocation for each block, the memory pool is used to allocate memory for the blocks, which is returned after use. This reduces garbage collection overhead caused by many small memory allocations.
 
 ## Tunable parameters
@@ -467,7 +467,7 @@ Each test will be performed with the new flow and the legacy flow, with 10 measu
 | Medium dataset |    10,000 |  10 GB |        100 MB |              30% |
 | Large dataset  | 1,000,000 | 100 GB |        100 MB |              40% |
 
-'Files' is the target number of files, 'Size' is the target size, and 'Max file size' is the maximum file size a single file can have. Each of these values is a target, which means that they'll be approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
+'Files' is the target number of files, 'Size' is the target size, and 'Max file size' is the maximum file size a single file can have. Each of these values is a target, meaning they are approximate. They will however be deterministic across the runs and machines, as they're using the same seed during generation. Duplication rate is the percentage of blocks that already exist in another file. This is implemented by having the files being filled with 0s.
 
 ## General results
 
@@ -481,7 +481,7 @@ If we look at a profiled run of the legacy flow, we see that `3641 + 1541 + 839 
 
 ![Armdahl's law](benchmark/figures/macbook_small_speedup.png)
 
-We see that a speedup of 2.19 corresponds to 3 cores being utilized. This is not quite as far as we'd like, but that was assuming that the entire workload was parallelizable. In practice, there are some sequential parts of the workload, such as the network and disk I/O, that are not parallelizable, so this rough estimate of the speedup is seemingly quite good.
+We see that a speedup of 2.19 suggests that 3 cores are being utilized. This is not quite as far as we'd like, but that was assuming that the entire workload was parallelizable. In practice, there are some sequential parts of the workload, such as the network and disk I/O, that are not parallelizable, so this rough estimate of the speedup is seemingly quite good.
 
 Let's look at the results for the medium dataset:
 
@@ -508,7 +508,7 @@ There's a small discrepancy in the performance numbers from the Windows machine,
 
 ## Effects of the sparsity of the data
 
-One strength of the legacy approach is that it only downloads volumes once, then extracts a block from the volume and patches the target files that need the block.
+One strength of the legacy approach is that it downloads each volumes only once, then extracts blocks and patches the corresponding target files.
 This allows for quite efficient use of the extracted blocks, leading to a high deduplication results in higher performance.
 The new approach tries to leverage the same deduplication through the block and volume caches, so let us look at the effect of the deduplication rate on the performance of the two restore flows:
 
@@ -532,7 +532,7 @@ We'll be using the medium dataset for this test:
 
 Here we see that the new restore flow is faster than the legacy restore flow, with a speedup of 1.51x on average even though both flows are able to keep the target disk at almost 100% utilization.
 This means that the added parallelism of the new restore flow is neglible as both are limited by the disk speed.
-We still observe a performance gain, which is due to the on-the-fly verification of files, saving an entire pass over the data.
+We still observe a performance gain, which is due to the on-the-fly verification of files, which eliminates the need for an additional pass over the data.
 
 There is still some merit in running multiple FileProcessors, as the new restore flow reaches the saturation point at 4 FileProcessors.
 The disk reaches saturation at around 4 FileProcessors, where the latency of the disk results in diminishing returns.
@@ -547,8 +547,8 @@ To see the effect of this, we'll be running the medium dataset on the 9800X3D wi
 ![Results for the preallocation benchmark on 9800X3D](benchmark/figures/hdd_medium_pre.png)
 
 Here we see a slight speedup for 8 FileProcessors, which doesn't really confirm the hypothesis, as the speedup is within the margin of error.
-However, the preallocation does hint the size of the files to the filesystem, which can be beneficial for the long-term health of the filesystem.
-Furthermoree, this effect is likely due to the fact that the target disk is quite new and unused, so fragmentation is not as big of an issue as it would be on a disk that has been used for a while.
+However, the preallocation provides a size hint to the filesystem, which can be beneficial its long-term health.
+Furthermore, this effect is likely due to the fact that the target disk is quite new and unused, so fragmentation is not as big of an issue as it would be on a disk that has been used for a while.
 Regardless, providing the hint doesn't hurt the performance, so enabling it for HDD based systems is recommended.
 
 # Future work
@@ -566,7 +566,8 @@ While the new restore flow is faster, we're still not achieving the maximum thro
 One reason could be that the storage is being cached by the operating system, leading to suboptimal performance.
 This is because the data is not being used frequently enough to reap the benefits of the cache.
 The data written to the target file is no longer needed, so there's no reason to keep it in the cache.
-The same goes for the volumes, where only the final decrypted volume is accessed multiple times.
+Once the data is written to the target file, it's no longer needed in the cache.
+The same applies to volumes, where only the final decrypted volume is accessed multiple times.
 For SATA drives and the like, the speeds are so low that the cache is not a bottleneck, but for high-speed NVMe drives, the cache can be a bottleneck.
 
 To alleviate this, we could use direct storage access (`O_DIRECT` on NIX systems and `FILE_FLAG_NO_BUFFERING` on Windows systems), bypassing the operating system cache.
