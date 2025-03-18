@@ -1,6 +1,8 @@
-# Speeding up the restore operation by 2x - 8x
+# Cut restore times by 3.8x: A deep dive into our new restore flow
 
-This blog post describes the reworked restore flow.
+A crucial property of a backup is its ability to restore your data when you need it, returning files to their original or designated location. But a restore isn't just about getting data back — it’s about getting it back fast. Long restore times can mean downtime, delays, and frustration, making performance a critical factor.
+
+This blog post explores the reworked restore flow, designed to drastically improve speed so you can recover your data faster than ever.
 
 It was originally merged in [PR #5728](https://github.com/duplicati/duplicati/pull/5728), with bugfixes in [PR #5840](https://github.com/duplicati/duplicati/pull/5840), [PR #5842](https://github.com/duplicati/duplicati/pull/5842), [PR #5886](https://github.com/duplicati/duplicati/pull/5886), [PR #5958](https://github.com/duplicati/duplicati/pull/5958), [PR #6026](https://github.com/duplicati/duplicati/pull/6026), and with additional optimizations in [PR #5983](https://github.com/duplicati/duplicati/pull/5983), [PR #5991](https://github.com/duplicati/duplicati/pull/5991), [PR #6028](https://github.com/duplicati/duplicati/pull/6028).
 
@@ -12,7 +14,7 @@ If any issues arise with the new flow, please report them on the forum. You can 
 
 ## TL;DR
 
-The legacy restore flow is slow because it's performed sequentially. The restore flow has been rewritten to leverage concurrent execution, reducing restore time by an average of 3.80x at the cost of increased memory, disk and CPU utilization. The new flow can be tuned to balance the resource usage and the restore time.
+The restore workflow has been redesigned to leverage concurrent execution, outlined in the following diagram:
 
 ```mermaid
 flowchart LR;
@@ -71,7 +73,11 @@ flowchart LR;
     end;
 ```
 
+This redesign reduces restore time by an average of 3.80x across our benchmarks at the cost of increased memory, disk and CPU utilization. The best observed relative improvement was the medium dataset on an AMD 7975WX, with an average speedup of 8.65x:
+
 ![Results for the medium dataset on the 7975WX](benchmark/figures/threadripper02_medium.png)
+
+The most absolute improvement was with the large dataset on the same CPU, with an average reduction of 252.95 seconds (4 minutes and 12.95 seconds):
 
 ![Results for the large dataset on the 7975WX](benchmark/figures/threadripper02_large.png)
 
@@ -105,42 +111,45 @@ We'll be using the following terms in this post:
 - _[Communicating Sequential Processes (CSP)](https://www.cs.cmu.edu/~crary/819-f09/Hoare78.pdf)_: A programming paradigm that models concurrent systems as a network of independent processes that communicate through channels. In Duplicati, the CSP library [CoCoL](https://github.com/kenkendk/cocol) is used, but in principle any CSP library could be used. It was chosen since it is already being used in Duplicati, especially in the backup flow.
 - _Process_: A CSP process that sequentially performs a specific task, only sharing data through channels. A process can be a thread, a coroutine, or any other form of concurrent execution.
 - _Channel_: A CSP channel that is used to communicate between processes. A message can be any object. A channel can be unbuffered, meaning a synchronous/rendezvous channel where the sender and receiver must be ready to communicate, or buffered, meaning an asynchronous channel where the sender can send a message without the receiver being ready to receive it up to a certain buffer size. In the benchmarks in this blog post, the channels are buffered.
+- _Patching_: The process of updating a file with new data. In the context of Duplicati, it is the process of writing blocks from the remote storage to the designated location in the target file.
+- _Hashing_: The process of computing a fixed-size hash value from a variable-size input. In the context of Duplicati, it is used as a fingerprint to verify that the data has not been corrupted during.
 
 # The old restore flow
 
 Before describing the new flow, there's value in understanding the old restore flow, its strengths and weaknesses.
+The following description describes all of the steps, some of which may be skippped depending on the supplied options.
 The legacy restore flow is as follows:
 
-1. Combine file filters.
-2. Open or restore the local database.
+1. Combine file filters to find the files that needs to be restored.
+2. Open or restore the local database keeping track of the backup.
 3. Verify the remote files;
    1. Get the list of remote volumes.
    2. Verify that there are no missing or unexpected extra volumes.
-4. Prepare the block and file list.
-5. Create the directory structure.
-6. Scan the existing target files for existing blocks.
-7. Scan for existing source files for existing blocks.
-8. Patch target files with local blocks.
-9. Get the list of required volumes to download.
+4. Prepare the list of files to restore the list of blocks each file needs.
+5. Create the target directory structure.
+6. Scan the existing target files for existing blocks, as they don't need to be restored.
+7. Scan for existing source files for existing blocks, as they can be copied to the target file.
+8. Patch target files with the local blocks found in step 7.
+9. Get the list of required volumes to download based of the blocks that are still missing locally.
 10. For each volume:
     1. Download the volume.
     2. Decrypt the volume.
     3. Decompress the volume.
     4. For each block in the decompressed volume:
-       1. Extract the block from the zip file.
-       2. Check that the size and block hash matches.
+       1. Extract the block from the volume.
+       2. Check that the size and block hash matches what's recorded in the database to ensure that the block hasn't been corrupted.
        3. Patch all of the target files that need this block.
 11. Restore metadata; for each target file:
-    1. Download the volume that contains the metadata.
-    2. Decrypt the volume.
-    3. Decompress the volume.
-    4. Extract the metadata from the zip file.
-    5. Check that the size and block hash matches.
+    1. Download the volume(s) that contains the metadata.
+    2. Decrypt the volume(s).
+    3. Decompress the volume(s).
+    4. Extract the metadata block(s) from the volume(s).
+    5. Check that the size and block hash of each block matches what's recorded in the database to ensure that the block hasn't been corrupted.
     6. Restore the metadata from the block(s).
 12. Verify the restored files; for each target file:
     1. Read the target file.
     2. Compute the hash of the target file.
-    3. Check that the hash and size matches.
+    3. Check that the hash and size matches to ensure that the file has been restored to the state recorded during the backup.
 
 The flow is visualized in the following diagram:
 
@@ -293,8 +302,8 @@ In particular, most of the time spent in the legacy flow is step 10 (downloading
 
 The new flow is as follows:
 
-1. Combine file filters.
-2. Open or restore the local database.
+1. Combine file filters to find the files that needs to be restored.
+2. Open or restore the local database keeping track of the backup.
 3. Verify the remote files;
    1. Get the list of remote volumes.
    2. Verify that there are no missing or unexpected extra volumes.
@@ -309,7 +318,8 @@ The new flow is as follows:
       6. Patch the target file with the blocks received blocks.
       7. Verify that the target file matches the expected size and hash.
       8. Request the metadata blocks.
-      9. Restore the metadata.
+      9. Verify that the metadata blocks match the expected size and hash.
+      10. Restore the metadata.
    3. The `BlockManager` will respond to block requests, caching the blocks extracted from volumes in memory. It starts by computing which blocks and volumes are needed during the restore and how many times each block is needed from each volume. This is used to automatically evict cache entries when they are no longer needed to keep the footprint of the cache low.
       1. If the requested block is in the cache (in memory), it will respond with the block from the cache.
       2. If the requested block is not in the cache (in memory), it will request the block from the `VolumeManager`. When receiving the block from the volume cache, it will notify all of the pending block requests. If the number of pending requests is lower than the number of times the block is needed, it will store the block in the cache. Otherwise, the block will be discarded. It will also notify the `VolumeManager` when the volume can be evicted from its cache.
@@ -586,7 +596,8 @@ This may be attributed to the lack of direct storage access, but at the time of 
 
 # Conclusion
 
-In this blog post, we've presented the new restore flow, which is a rework of the legacy restore flow to leverage concurrent execution and reduce the restore time.
-The new flow is able to reduce the restore time by 3.80 times on average across all benchmarks, at the cost of increased memory, disk, and CPU utilization.
-The new flow can be tuned to balance the resource usage and the restore time, by adjusting the cache sizes and the number of parallel processes.
-The new flow is able to utilize the system resources more aggressively compared to the legacy restore flow, leading to a faster restore time.
+In this blog post, we've presented the new restore flow - a complete rework of the legacy flow, designed to leverage concurrent execution and drastically reduce restore times.
+
+Across all benchmarks, the new flow has shown an average 3.80x speedup, utilizing system resources more aggressively to optimize memory, disk, and CPU usage. With tunable parameters, you can balance performance and resource consumption to suit your needs.
+
+Less waiting. More restoring. Whether you're recovering a single file or an entire backup, the new restore flow is built for speed. Download and install [the latest canary build](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.111_canary_2025-03-15) to experience the difference for yourself!
