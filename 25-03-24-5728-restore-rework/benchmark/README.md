@@ -16,19 +16,18 @@ git --version
 
 ## A Duplicati installation
 
-To run the benchmark, the `Duplicati.CommandLine.exe` and `Duplicati.TestDataGenerator.exe` executables must be available. To use the exact version used in this benchmark, run the following commands (included in the `setup.sh` script, which creates the `data_repos` directory and clones the repository):
+To run the benchmark, we need to have a clone of the Duplicati repo. To use the exact version used in this benchmark, run the following commands (included in the `setup.sh` script, which creates the `data_repos` directory and clones the repository):
 
 ```sh
-cd /path/to/where/you/want/the/repos
+mkdir data_repos
+cd data_repos
 git clone git@github.com:duplicati/duplicati.git duplicati
 cd duplicati
-git checkout ebb04dd
+git checkout 354a804
 dotnet build -c Release
 cd Tools/TestDataGenerator
 dotnet build -c Release
 ```
-
-The path to the `Duplicati.CommandLine.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine`. The path to the `Duplicati.TestDataGenerator.exe` executable will be `/path/to/where/you/want/the/repos/duplicati/Tools/TestDataGenerator/bin/Release/net8.0/TestDataGenerator`. On Windows, the executables will have have the `.exe` extension.
 
 # Running the benchmark
 
