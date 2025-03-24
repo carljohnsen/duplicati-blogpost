@@ -8,7 +8,7 @@ It was originally merged in [PR #5728](https://github.com/duplicati/duplicati/pu
 
 It has been included in the canary releases since [Duplicati 2.1.0.103](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.103_canary_2024-12-21) onwards, with the latest version being [Duplicati 2.1.0.111](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.111_canary_2025-03-15), which includes all of the bugfixes and optimizations mentioned above.
 
-The plots generated in this script can be reproduced by running the [benchmark](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-restore/benchmark) and the corresponding [plotting notebook](https://github.com/carljohnsen/duplicati-blogpost/blob/main/WIP-restore/benchmark/plotting.ipynb).
+The plots generated in this script can be reproduced by running the [benchmark](https://github.com/carljohnsen/duplicati-blogpost/tree/main/25-03-24-5728-restore-rework/benchmark) and the corresponding [plotting notebook](https://github.com/carljohnsen/duplicati-blogpost/tree/main/25-03-24-5728-restore-rework/benchmark/plotting.ipynb), although it will require some modifications to the paths and names in the plotting script.
 
 If any issues arise with the new flow, please report them on the forum. You can still use the legacy flow by supplying the option `--restore-legacy=true`. The legacy flow is also more memory efficient, so if you're running into memory or disk space issues, you can try the legacy flow.
 
