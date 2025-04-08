@@ -14,9 +14,20 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/WIP-restore/benchmark/runner/bin/Debug/net8.0/runner",
+            "program": "${workspaceFolder}/25-03-25-5728-restore-rework/benchmark/runner/bin/Debug/net8.0/runner",
             "args": [],
-            "cwd": "${workspaceFolder}/WIP-restore/benchmark/runner",
+            "cwd": "${workspaceFolder}/25-03-25-5728-restore-rework/benchmark/runner",
+            "stopAtEntry": false,
+            "console": "internalConsole"
+        },
+        {
+            "name": "SQLite benchmark",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}WIP-sqlite/benchmark/bin/Debug/net9.0/sqlite_bench",
+            "args": [],
+            "cwd": "${workspaceFolder}WIP-sqlite/benchmark",
             "stopAtEntry": false,
             "console": "internalConsole"
         }
