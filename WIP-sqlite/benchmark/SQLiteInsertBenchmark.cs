@@ -33,10 +33,10 @@ namespace sqlite_bench
 
         public SQLiteInsertBenchmark() : base(Backend)
         {
-            m_insertBlocksetManagedCommand = CreateCommand(SQLQeuries.InsertBlocksetManaged);
-            m_insertBlocksetSelectCommand = CreateCommand(SQLQeuries.InsertBlocksetSelect);
-            m_insertBlocksetReturningCommand = CreateCommand(SQLQeuries.InsertBlocksetReturning);
-            m_insertBlocksetTempManagedCommand = CreateCommand(SQLQeuries.InsertTempManaged);
+            m_insertBlocksetManagedCommand = CreateCommand(SQLQeuriesOriginal.InsertBlocksetManaged);
+            m_insertBlocksetSelectCommand = CreateCommand(SQLQeuriesOriginal.InsertBlocksetSelect);
+            m_insertBlocksetReturningCommand = CreateCommand(SQLQeuriesOriginal.InsertBlocksetReturning);
+            m_insertBlocksetTempManagedCommand = CreateCommand(SQLQeuriesOriginal.InsertTempManaged);
         }
 
         public void CheckIfCommit(int iteration)
@@ -54,7 +54,7 @@ namespace sqlite_bench
             if (!BenchmarkParams.UseIndex && BenchmarkParams.IndexAfter)
             {
                 using var cmd = con.CreateCommand();
-                cmd.CommandText = SQLQeuries.Index;
+                cmd.CommandText = SQLQeuriesOriginal.Index;
                 cmd.ExecuteNonQuery();
             }
         }
@@ -157,7 +157,7 @@ namespace sqlite_bench
             transaction ??= con.BeginTransaction();
 
             using var cmd = con.CreateCommand();
-            cmd.CommandText = SQLQeuries.TempTable;
+            cmd.CommandText = SQLQeuriesOriginal.TempTable;
             cmd.ExecuteNonQuery();
 
             for (int i = 0; i < entries.Count; i++)
@@ -172,7 +172,7 @@ namespace sqlite_bench
                 _ = m_insertBlocksetTempManagedCommand.ExecuteNonQuery(transaction);
             }
 
-            cmd.CommandText = SQLQeuries.FlushTemp;
+            cmd.CommandText = SQLQeuriesOriginal.FlushTemp;
             cmd.ExecuteNonQuery(transaction);
 
             CheckIfCreateIndex();
@@ -184,7 +184,7 @@ namespace sqlite_bench
             transaction ??= con.BeginTransaction();
 
             using var cmd = con.CreateCommand();
-            cmd.CommandText = SQLQeuries.TempTable;
+            cmd.CommandText = SQLQeuriesOriginal.TempTable;
             cmd.ExecuteNonQuery();
 
             for (int i = 0; i < entries.Count; i++)
@@ -199,7 +199,7 @@ namespace sqlite_bench
                 _ = m_insertBlocksetTempManagedCommand.ExecuteNonQuery(transaction);
             }
 
-            cmd.CommandText = SQLQeuries.FlushTempSorted;
+            cmd.CommandText = SQLQeuriesOriginal.FlushTempSorted;
             cmd.ExecuteNonQuery(transaction);
 
             CheckIfCreateIndex();
@@ -211,7 +211,7 @@ namespace sqlite_bench
             transaction ??= con.BeginTransaction();
 
             using var cmd = con.CreateCommand();
-            cmd.CommandText = SQLQeuries.TempTable;
+            cmd.CommandText = SQLQeuriesOriginal.TempTable;
             cmd.ExecuteNonQuery();
 
             entries.Sort(new TupleComparer());
@@ -229,7 +229,7 @@ namespace sqlite_bench
                 _ = m_insertBlocksetTempManagedCommand.ExecuteNonQuery(transaction);
             }
 
-            cmd.CommandText = SQLQeuries.FlushTemp;
+            cmd.CommandText = SQLQeuriesOriginal.FlushTemp;
             cmd.ExecuteNonQuery(transaction);
 
             CheckIfCreateIndex();
@@ -330,12 +330,12 @@ namespace sqlite_bench
             using var cmd = con.CreateCommand();
             if (BenchmarkParams.UseIndex)
             {
-                cmd.CommandText = SQLQeuries.CreateIndex;
+                cmd.CommandText = SQLQeuriesOriginal.CreateIndex;
                 cmd.ExecuteNonQuery();
             }
             else
             {
-                cmd.CommandText = SQLQeuries.DropIndex;
+                cmd.CommandText = SQLQeuriesOriginal.DropIndex;
                 cmd.ExecuteNonQuery();
             }
 

@@ -25,9 +25,9 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}WIP-sqlite/benchmark/bin/Debug/net9.0/sqlite_bench",
+            "program": "${workspaceFolder}/WIP-sqlite/benchmark/bin/Debug/net9.0/sqlite_bench",
             "args": [],
-            "cwd": "${workspaceFolder}WIP-sqlite/benchmark",
+            "cwd": "${workspaceFolder}/WIP-sqlite/benchmark",
             "stopAtEntry": false,
             "console": "internalConsole"
         }

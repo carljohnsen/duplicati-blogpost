@@ -38,7 +38,6 @@ namespace sqlite_bench
                 default:
                     throw new NotImplementedException();
             }
-            CreateTables();
         }
 
         protected IDbCommand CreateCommand(string query)
@@ -60,14 +59,16 @@ namespace sqlite_bench
             return cmd;
         }
 
-        private void CreateTables()
+        protected void CreateTables(string[] queries)
         {
-            using IDbCommand cmd = con.CreateCommand();
-            foreach (var query in SQLQeuries.TableQueries)
+            using var cmd = con.CreateCommand();
+            using var transaction = con.BeginTransaction();
+            foreach (var query in queries)
             {
                 cmd.CommandText = query;
-                cmd.ExecuteNonQuery();
+                cmd.ExecuteNonQuery(transaction);
             }
+            transaction.Commit();
         }
 
         public void Dispose()
@@ -102,7 +103,7 @@ namespace sqlite_bench
         protected void DropRows()
         {
             using IDbCommand cmd = con.CreateCommand();
-            cmd.CommandText = SQLQeuries.DropAllRows;
+            cmd.CommandText = SQLQeuriesOriginal.DropAllRows;
             cmd.AddNamedParameter("id", last_id);
             cmd.ExecuteNonQuery();
         }
@@ -110,7 +111,7 @@ namespace sqlite_bench
         protected long GetLastRowId()
         {
             using var cmd = con.CreateCommand();
-            cmd.CommandText = SQLQeuries.LastRowId;
+            cmd.CommandText = SQLQeuriesOriginal.LastRowId;
             return cmd.ExecuteScalarInt64();
         }
     }

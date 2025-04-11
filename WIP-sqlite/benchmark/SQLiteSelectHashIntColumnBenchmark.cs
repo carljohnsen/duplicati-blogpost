@@ -7,7 +7,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteSelectBenchmark : SQLiteBenchmark
+    public class SQLiteSelectHashIntColumnBenchmark : SQLiteBenchmark
     {
         [ParamsAllValues]
         public static Backends Backend { get; set; }
@@ -22,22 +22,26 @@ namespace sqlite_bench
         private readonly IDbCommand m_dropTableCommand;
         private readonly IDbCommand m_insertBlocksetManagedCommand;
         private readonly IDbCommand m_selectCommand;
-        private readonly IDbCommand m_selectHashOnlyCommand;
+        private readonly IDbCommand m_selectFullHashOnlyCommand;
         private readonly IDbCommand m_selectLengthOnlyCommand;
+        private readonly IDbCommand m_selectHashOnlyIntCommand;
+        private readonly IDbCommand m_selectHashIntLengthCommand;
 
         //[Params(0, 1_000, 10_000, 100_000)]
         [Params(1_000_000)]
         public int PreFilledCount { get; set; } = 0;
 
-        public SQLiteSelectBenchmark() : base(Backend)
+        public SQLiteSelectHashIntColumnBenchmark() : base(Backend)
         {
-            m_createIndexCommand = CreateCommand(SQLQeuriesOriginal.CreateIndex);
-            m_dropIndexCommand = CreateCommand(SQLQeuriesOriginal.DropIndex);
-            m_dropTableCommand = CreateCommand(SQLQeuriesOriginal.DropTable);
-            m_insertBlocksetManagedCommand = CreateCommand(SQLQeuriesOriginal.InsertBlocksetManaged);
-            m_selectCommand = CreateCommand(SQLQeuriesOriginal.FindBlockset);
-            m_selectHashOnlyCommand = CreateCommand(SQLQeuriesOriginal.FindBlocksetHashOnly);
-            m_selectLengthOnlyCommand = CreateCommand(SQLQeuriesOriginal.FindBlocksetLengthOnly);
+            m_createIndexCommand = CreateCommand(SQLQeuriesHashIntColumn.CreateIndex);
+            m_dropIndexCommand = CreateCommand(SQLQeuriesHashIntColumn.DropIndex);
+            m_dropTableCommand = CreateCommand(SQLQeuriesHashIntColumn.DropTable);
+            m_insertBlocksetManagedCommand = CreateCommand(SQLQeuriesHashIntColumn.InsertBlocksetManaged);
+            m_selectCommand = CreateCommand(SQLQeuriesHashIntColumn.FindBlockset);
+            m_selectFullHashOnlyCommand = CreateCommand(SQLQeuriesHashIntColumn.FindBlocksetHashOnly);
+            m_selectLengthOnlyCommand = CreateCommand(SQLQeuriesHashIntColumn.FindBlocksetLengthOnly);
+            m_selectHashOnlyIntCommand = CreateCommand(SQLQeuriesHashIntColumn.FindBlocksetHashOnlyInt);
+            m_selectHashIntLengthCommand = CreateCommand(SQLQeuriesHashIntColumn.FindBlocksetHashIntLength);
         }
 
         protected override void Dispose(bool disposing)
@@ -67,9 +71,10 @@ namespace sqlite_bench
             }
 
             foreach (var (query, args) in new[] {
-                    (SQLQeuriesOriginal.FindBlockset, new(object, string)[] { (42L, "length"), ("aoeu", "fullhash") }),
-                    (SQLQeuriesOriginal.FindBlocksetHashOnly, new(object, string)[] { ("aoeu", "fullhash") }),
-                    (SQLQeuriesOriginal.FindBlocksetLengthOnly, new(object, string)[] { (42L, "length") }),
+                    (SQLQeuriesHashIntColumn.FindBlockset, new(object, string)[] { (42L, "length"), ("aoeu", "fullhash") }),
+                    (SQLQeuriesHashIntColumn.FindBlocksetHashOnly, new(object, string)[] { ("aoeu", "fullhash") }),
+                    (SQLQeuriesHashIntColumn.FindBlocksetLengthOnly, new(object, string)[] { (42L, "length") }),
+                    (SQLQeuriesHashIntColumn.FindBlocksetHashOnlyInt, new(object, string)[] { (42L, "hash") }),
                 })
             {
                 cmd.CommandText = $"EXPLAIN QUERY PLAN {query}";
@@ -87,6 +92,7 @@ namespace sqlite_bench
                     {
                         Console.WriteLine($"Query: {query}");
                         Console.WriteLine($"{reader.GetString(3)}");
+                        Console.WriteLine();
                         //for (int i = 0; i < reader.FieldCount; i++)
                         //{
                         //    Type fieldType = reader.GetFieldType(i);
@@ -107,7 +113,7 @@ namespace sqlite_bench
             transaction = con.BeginTransaction();
             m_dropIndexCommand.ExecuteNonQuery();
             m_dropTableCommand.ExecuteNonQuery();
-            CreateTables(SQLQeuriesOriginal.TableQueries);
+            CreateTables(SQLQeuriesHashIntColumn.TableQueries);
 
             var buffer = new byte[44];
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -120,10 +126,13 @@ namespace sqlite_bench
                     buffer[j] = (byte)(buffer[j] % alphanumericChars.Length);
 
                 var entry = (rng.NextInt64() % 100, new string([.. buffer.Select(x => alphanumericChars[x])]));
+                var hashint = BitConverter.ToInt64(Encoding.UTF8.GetBytes(entry.Item2)[..8], 0);
+                var hashrest = entry.Item2[8..];
                 entries.Add(entry);
                 m_insertBlocksetManagedCommand.SetParameterValue("id", i);
+                m_insertBlocksetManagedCommand.SetParameterValue("hash", hashint);
                 m_insertBlocksetManagedCommand.SetParameterValue("length", entry.Item1);
-                m_insertBlocksetManagedCommand.SetParameterValue("fullhash", entry.Item2);
+                m_insertBlocksetManagedCommand.SetParameterValue("fullhash", hashrest);
                 m_insertBlocksetManagedCommand.ExecuteNonQuery(transaction);
             }
 
@@ -142,7 +151,7 @@ namespace sqlite_bench
                 transaction = con.BeginTransaction();
         }
 
-        [Benchmark]
+        //[Benchmark]
         public void SelectBenchmark()
         {
             transaction ??= con.BeginTransaction();
@@ -158,16 +167,16 @@ namespace sqlite_bench
             }
         }
 
-        [Benchmark]
-        public void SelectHashOnlyBenchmark()
+        //[Benchmark]
+        public void SelectFullHashOnlyBenchmark()
         {
             transaction ??= con.BeginTransaction();
 
             for (int i = 0; i < entries.Count; i++)
             {
                 var (length, fullhash) = entries[i];
-                m_selectHashOnlyCommand.SetParameterValue("fullhash", fullhash);
-                using var reader = m_selectHashOnlyCommand.ExecuteReader();
+                m_selectFullHashOnlyCommand.SetParameterValue("fullhash", fullhash);
+                using var reader = m_selectFullHashOnlyCommand.ExecuteReader();
                 bool found = false;
                 while (reader.Read())
                 {
@@ -210,9 +219,37 @@ namespace sqlite_bench
             }
         }
 
+        [Benchmark]
+        public void SelectHashOnlyIntBenchmark()
+        {
+            transaction ??= con.BeginTransaction();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var (length, fullhash) = entries[i];
+                var hashint = BitConverter.ToInt64(Encoding.UTF8.GetBytes(fullhash)[..8], 0);
+                m_selectHashOnlyIntCommand.SetParameterValue("hash", hashint);
+                using var reader = m_selectHashOnlyIntCommand.ExecuteReader();
+                bool found = false;
+                while (reader.Read())
+                {
+                    var read_id = reader.GetInt64(0);
+                    var read_length = reader.GetInt64(1);
+                    var read_fullhash = reader.GetString(2);
+                    if (read_length == length && read_fullhash == fullhash[8..])
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    throw new Exception($"Hash {length} not found {hashint}");
+            }
+        }
+
         public static IEnumerable<BenchmarkParams> ValidParams()
         {
-            var counts = new[] { 1_000_000 }; //, 1_000, 10_000 }; //, 100_000, 1_000_000 };
+            var counts = new[] { /*100, 1_000, 10_000, 100_000,*/ 1_000_000 };
 
             foreach (var count in counts)
             {

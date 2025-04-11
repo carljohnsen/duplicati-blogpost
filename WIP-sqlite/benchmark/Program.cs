@@ -1,4 +1,6 @@
-﻿namespace sqlite_bench
+﻿using BenchmarkDotNet.Running;
+
+namespace sqlite_bench
 {
 
     public class Program
@@ -25,11 +27,12 @@
             b.GlobalSetup();
             Console.WriteLine("Running SelectBenchmark...");
             b.SelectBenchmark();
-            b.SelectHashOnlyBenchmark();
-            b.SelectLengthOnlyBenchmark();
+            //b.SelectFullHashOnlyBenchmark();
+            //b.SelectLengthOnlyBenchmark();
+            //b.SelectHashOnlyIntBenchmark();
             Console.WriteLine("Done!");
 #else
-            var summary = BenchmarkRunner.Run<SQLiteSelectBenchmark>();
+            var summary = BenchmarkRunner.Run<SQLiteSelectHashIntColumnBenchmark>();
 #endif
         }
     }
