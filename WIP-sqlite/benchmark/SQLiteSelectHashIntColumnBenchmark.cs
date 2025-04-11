@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using Duplicati.Library.Main.Database;
+using Microsoft.Extensions.Caching.Memory;
 using System.Data;
 using System.Text;
 
@@ -140,7 +141,12 @@ namespace sqlite_bench
                 m_createIndexCommand.ExecuteNonQuery(transaction);
 
             // Shuffle and take a subset of the entries
+            var replicated = entries.Count / 10;
             entries = [.. entries.OrderBy(x => Guid.NewGuid()).Take(BenchmarkParams.Count)];
+            // 10 % duplicates 224
+            entries.AddRange(Enumerable.Repeat(entries.Take(replicated), 10).SelectMany(x => x));
+            // Shuffle again
+            entries = [.. entries.OrderBy(x => Guid.NewGuid())];
 
             transaction.Commit();
             transaction.Dispose();
@@ -247,9 +253,52 @@ namespace sqlite_bench
             }
         }
 
+        [Benchmark]
+        public void SelectHashOnlyIntDictBenchmark()
+        {
+            // 72
+            var cache_max = entries.Count / 10;
+            var cache_evict = 0.50;
+            var cache_options = new MemoryCacheOptions();
+            using var cache = new MemoryCache(cache_options);
+            transaction ??= con.BeginTransaction();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var (length, fullhash) = entries[i];
+                if (cache.TryGetValue(fullhash, out long cached))
+                {
+                    var id = cached;
+                    continue;
+                }
+                var hashint = BitConverter.ToInt64(Encoding.UTF8.GetBytes(fullhash)[..8], 0);
+                m_selectHashOnlyIntCommand.SetParameterValue("hash", hashint);
+                using var reader = m_selectHashOnlyIntCommand.ExecuteReader();
+                bool found = false;
+                while (reader.Read())
+                {
+                    var read_id = reader.GetInt64(0);
+                    var read_length = reader.GetInt64(1);
+                    var read_fullhash = reader.GetString(2);
+                    if (read_length == length && read_fullhash == fullhash[8..])
+                    {
+                        found = true;
+                        cache.Set(fullhash, read_id);
+                        //if (cache.Count > cache_max)
+                        //{
+                        //    cache.Compact(cache_evict);
+                        //}
+                        break;
+                    }
+                }
+                if (!found)
+                    throw new Exception($"Hash {length} not found {hashint}");
+            }
+        }
+
         public static IEnumerable<BenchmarkParams> ValidParams()
         {
-            var counts = new[] { /*100, 1_000, 10_000, 100_000,*/ 1_000_000 };
+            var counts = new[] { /*100, 1_000, 10_000, 100_000,*/ 10_000_000 };
 
             foreach (var count in counts)
             {

@@ -212,7 +212,7 @@ namespace sqlite_bench
 
         public static IEnumerable<BenchmarkParams> ValidParams()
         {
-            var counts = new[] { 1_000_000 }; //, 1_000, 10_000 }; //, 100_000, 1_000_000 };
+            var counts = new[] { 10_000_000 }; //, 1_000, 10_000 }; //, 100_000, 1_000_000 };
 
             foreach (var count in counts)
             {

@@ -32,7 +32,7 @@ namespace sqlite_bench
             //b.SelectHashOnlyIntBenchmark();
             Console.WriteLine("Done!");
 #else
-            var summary = BenchmarkRunner.Run<SQLiteSelectHashIntColumnBenchmark>();
+            var summary = BenchmarkRunner.Run<SQLiteSelectBenchmark>();
 #endif
         }
     }
