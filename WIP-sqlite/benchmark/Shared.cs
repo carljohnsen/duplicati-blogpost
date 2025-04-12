@@ -8,8 +8,8 @@ namespace sqlite_bench
     public enum Backends
     {
         DuplicatiSQLite,
-        //MicrosoftSQLite,
-        //SystemSQLite,
+        MicrosoftSQLite,
+        SystemSQLite,
         //Dictionary
     };
 

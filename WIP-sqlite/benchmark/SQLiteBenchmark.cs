@@ -24,14 +24,14 @@ namespace sqlite_bench
                     con.ConnectionString = $"Data Source={data_source}";
                     con.Open();
                     break;
-                //case Backends.MicrosoftSQLite:
-                //    con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}");
-                //    con.Open();
-                //    break;
-                //case Backends.SystemSQLite:
-                //    con = new System.Data.SQLite.SQLiteConnection($"Data Source={data_source}");
-                //    con.Open();
-                //    break;
+                case Backends.MicrosoftSQLite:
+                    con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}");
+                    con.Open();
+                    break;
+                case Backends.SystemSQLite:
+                    con = new System.Data.SQLite.SQLiteConnection($"Data Source={data_source}");
+                    con.Open();
+                    break;
                 //case Backends.Dictionary:
                 //    con = new Dictionary<string, string>();
                 //    break;
@@ -57,18 +57,6 @@ namespace sqlite_bench
 
             cmd.Prepare();
             return cmd;
-        }
-
-        protected void CreateTables(string[] queries)
-        {
-            using var cmd = con.CreateCommand();
-            using var transaction = con.BeginTransaction();
-            foreach (var query in queries)
-            {
-                cmd.CommandText = query;
-                cmd.ExecuteNonQuery(transaction);
-            }
-            transaction.Commit();
         }
 
         public void Dispose()
@@ -113,6 +101,18 @@ namespace sqlite_bench
             using var cmd = con.CreateCommand();
             cmd.CommandText = SQLQeuriesOriginal.LastRowId;
             return cmd.ExecuteScalarInt64();
+        }
+
+        protected void RunNonQueries(string[] queries)
+        {
+            using var cmd = con.CreateCommand();
+            using var transaction = con.BeginTransaction();
+            foreach (var query in queries)
+            {
+                cmd.CommandText = query;
+                cmd.ExecuteNonQuery(transaction);
+            }
+            transaction.Commit();
         }
     }
 }

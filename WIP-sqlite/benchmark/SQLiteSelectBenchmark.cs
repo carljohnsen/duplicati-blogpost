@@ -10,7 +10,7 @@ namespace sqlite_bench
     public class SQLiteSelectBenchmark : SQLiteBenchmark
     {
         [ParamsAllValues]
-        public static Backends Backend { get; set; }
+        public static Backends Backend { get; set; } = Backends.MicrosoftSQLite;
 
         [ParamsSource(nameof(ValidParams))]
         public BenchmarkParams BenchmarkParams { get; set; } = new BenchmarkParams();
@@ -31,6 +31,7 @@ namespace sqlite_bench
 
         public SQLiteSelectBenchmark() : base(Backend)
         {
+            RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
             m_createIndexCommand = CreateCommand(SQLQeuriesOriginal.CreateIndex);
             m_dropIndexCommand = CreateCommand(SQLQeuriesOriginal.DropIndex);
             m_dropTableCommand = CreateCommand(SQLQeuriesOriginal.DropTable);
@@ -104,12 +105,11 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             var rng = new Random(20250411);
-            transaction = con.BeginTransaction();
-            m_dropIndexCommand.ExecuteNonQuery();
-            m_dropTableCommand.ExecuteNonQuery();
-            CreateTables(SQLQeuriesOriginal.TableQueries);
+            RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
 
-            var buffer = new byte[44];
+            transaction = con.BeginTransaction();
+
+            var buffer = new byte[32];
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
             // Generate random data to insert
@@ -212,7 +212,7 @@ namespace sqlite_bench
 
         public static IEnumerable<BenchmarkParams> ValidParams()
         {
-            var counts = new[] { 10_000_000 }; //, 1_000, 10_000 }; //, 100_000, 1_000_000 };
+            var counts = new[] { 1_000_000 }; //, 1_000, 10_000 }; //, 100_000, 1_000_000 };
 
             foreach (var count in counts)
             {

@@ -11,7 +11,7 @@ namespace sqlite_bench
     public class SQLiteSelectHashIntColumnBenchmark : SQLiteBenchmark
     {
         [ParamsAllValues]
-        public static Backends Backend { get; set; }
+        public static Backends Backend { get; set; } = Backends.SystemSQLite;
 
         [ParamsSource(nameof(ValidParams))]
         public BenchmarkParams BenchmarkParams { get; set; } = new BenchmarkParams();
@@ -34,6 +34,7 @@ namespace sqlite_bench
 
         public SQLiteSelectHashIntColumnBenchmark() : base(Backend)
         {
+            RunNonQueries([SQLQeuriesHashIntColumn.DropIndex, SQLQeuriesHashIntColumn.DropTable, .. SQLQeuriesHashIntColumn.TableQueries]);
             m_createIndexCommand = CreateCommand(SQLQeuriesHashIntColumn.CreateIndex);
             m_dropIndexCommand = CreateCommand(SQLQeuriesHashIntColumn.DropIndex);
             m_dropTableCommand = CreateCommand(SQLQeuriesHashIntColumn.DropTable);
@@ -111,12 +112,10 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             var rng = new Random(20250411);
+            RunNonQueries([SQLQeuriesHashIntColumn.DropIndex, SQLQeuriesHashIntColumn.DropTable, .. SQLQeuriesHashIntColumn.TableQueries]);
             transaction = con.BeginTransaction();
-            m_dropIndexCommand.ExecuteNonQuery();
-            m_dropTableCommand.ExecuteNonQuery();
-            CreateTables(SQLQeuriesHashIntColumn.TableQueries);
 
-            var buffer = new byte[44];
+            var buffer = new byte[32];
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
             // Generate random data to insert
@@ -143,10 +142,10 @@ namespace sqlite_bench
             // Shuffle and take a subset of the entries
             var replicated = entries.Count / 10;
             entries = [.. entries.OrderBy(x => Guid.NewGuid()).Take(BenchmarkParams.Count)];
-            // 10 % duplicates 224
-            entries.AddRange(Enumerable.Repeat(entries.Take(replicated), 10).SelectMany(x => x));
-            // Shuffle again
-            entries = [.. entries.OrderBy(x => Guid.NewGuid())];
+            //// 10 % duplicates 224
+            //entries.AddRange(Enumerable.Repeat(entries.Take(replicated), 10).SelectMany(x => x));
+            //// Shuffle again
+            //entries = [.. entries.OrderBy(x => Guid.NewGuid())];
 
             transaction.Commit();
             transaction.Dispose();
@@ -166,7 +165,7 @@ namespace sqlite_bench
             {
                 var (length, fullhash) = entries[i];
                 m_selectCommand.SetParameterValue("length", length);
-                m_selectCommand.SetParameterValue("fullhash", fullhash);
+                m_selectCommand.SetParameterValue("fullhash", fullhash[8..]);
                 var id = m_selectCommand.ExecuteScalarInt64(transaction);
                 if (id < 0)
                     throw new Exception($"ID not found for {length}, {fullhash}");
@@ -253,7 +252,7 @@ namespace sqlite_bench
             }
         }
 
-        [Benchmark]
+        //[Benchmark]
         public void SelectHashOnlyIntDictBenchmark()
         {
             // 72
@@ -298,7 +297,7 @@ namespace sqlite_bench
 
         public static IEnumerable<BenchmarkParams> ValidParams()
         {
-            var counts = new[] { /*100, 1_000, 10_000, 100_000,*/ 10_000_000 };
+            var counts = new[] { /*100, 1_000, 10_000, 100_000,*/ 1_000_000 };
 
             foreach (var count in counts)
             {

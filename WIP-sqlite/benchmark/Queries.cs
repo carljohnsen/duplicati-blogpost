@@ -1,6 +1,46 @@
 namespace sqlite_bench
 {
 
+    public static class SQLQeuriesBlob
+    {
+        public static readonly string CreateIndex = @"
+            CREATE UNIQUE INDEX IF NOT EXISTS ""BlocksetFullHashLengthIdx"" ON ""Blockset"" (""FullHashLength"", ""ID"");";
+
+        public static readonly string DropIndex = @"
+            DROP INDEX IF EXISTS ""BlocksetFullHashLengthIdx"";";
+        public static readonly string DropTable = @"
+            DROP TABLE IF EXISTS ""Blockset"";";
+
+        public static readonly string FindBlockset = @"SELECT ""ID"" FROM ""Blockset"" WHERE ""FullHashLength"" = @fullhashlength";
+
+        public static readonly string InsertBlocksetManaged = @"INSERT INTO ""Blockset"" (""ID"", ""FullHashLength"") VALUES (@id, @fullhashlength);";
+
+        public static readonly string[] TableQueries = [
+            @"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""FullHashLength"" BLOB NOT NULL) STRICT",
+            "PRAGMA cache_size = 1000000",
+        ];
+    }
+
+    public static class SQLQeuriesBlobInt
+    {
+        public static readonly string CreateIndex = @"
+            CREATE UNIQUE INDEX IF NOT EXISTS ""BlocksetFullHashLengthIdx"" ON ""Blockset"" (""FirstHash"", ""FullHashLength"");";
+
+        public static readonly string DropIndex = @"
+            DROP INDEX IF EXISTS ""BlocksetFullHashLengthIdx"";";
+        public static readonly string DropTable = @"
+            DROP TABLE IF EXISTS ""Blockset"";";
+
+        public static readonly string FindBlockset = @"SELECT ""ID"", ""FullHashLength"" FROM ""Blockset"" WHERE ""FirstHash"" = @firsthash";
+
+        public static readonly string InsertBlocksetManaged = @"INSERT INTO ""Blockset"" (""ID"", ""FirstHash"", ""FullHashLength"") VALUES (@id, @firsthash, @fullhashlength);";
+
+        public static readonly string[] TableQueries = [
+            @"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""FirstHash"" INTEGER NOT NULL, ""FullHashLength"" BLOB NOT NULL) STRICT",
+            "PRAGMA cache_size = 1000000",
+        ];
+    }
+
     public static class SQLQeuriesOriginal
     {
         public static readonly string CreateIndex = @"
