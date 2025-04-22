@@ -6,7 +6,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteInsertBenchmark : SQLiteBenchmark
+    public class SQLiteInsertBenchmark : SQLiteBenchmarkSequential
     {
         [ParamsAllValues]
         public static Backends Backend { get; set; }

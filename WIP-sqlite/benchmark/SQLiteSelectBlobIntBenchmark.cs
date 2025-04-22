@@ -8,7 +8,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteSelectBlobIntBenchmark : SQLiteBenchmark
+    public class SQLiteSelectBlobIntBenchmark : SQLiteBenchmarkSequential
     {
         [ParamsAllValues]
         public static Backends Backend { get; set; }

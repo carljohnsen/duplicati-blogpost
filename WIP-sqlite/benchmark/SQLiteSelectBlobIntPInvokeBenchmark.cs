@@ -13,7 +13,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteSelectBlobIntPInvokeBenchmark : SQLiteBenchmark
+    public class SQLiteSelectBlobIntPInvokeBenchmark : SQLiteBenchmarkSequential
     {
         private IntPtr db;
         private IntPtr stmt;

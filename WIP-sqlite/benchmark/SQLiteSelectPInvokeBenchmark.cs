@@ -14,7 +14,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public partial class SQLiteSelectPInvokeBenchmark : SQLiteBenchmark
+    public partial class SQLiteSelectPInvokeBenchmark : SQLiteBenchmarkSequential
     {
         private IntPtr db;
         private IntPtr stmt;

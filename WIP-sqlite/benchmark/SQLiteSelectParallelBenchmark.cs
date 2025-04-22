@@ -8,7 +8,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteSelectBenchmark : SQLiteBenchmarkSequential
+    public class SQLiteSelectParallelBenchmark : SQLiteBenchmarkSequential
     {
         //[ParamsAllValues]
         public static Backends Backend { get; set; } = Backends.DuplicatiSQLite;
@@ -32,7 +32,7 @@ namespace sqlite_bench
         [Params(1_000_000)]
         public int PreFilledCount { get; set; } = 0;
 
-        public SQLiteSelectBenchmark() : base(Backend)
+        public SQLiteSelectParallelBenchmark() : base(Backend)
         {
             RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
             m_createIndexCommand = CreateCommand(SQLQeuriesOriginal.CreateIndex);

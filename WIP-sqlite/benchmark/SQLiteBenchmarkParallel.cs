@@ -3,7 +3,7 @@ using System.Data;
 
 namespace sqlite_bench
 {
-    public class SQLiteBenchmark : IDisposable
+    public class SQLiteBenchmarkParallel : IDisposable
     {
         // The SQLite connection
         protected IDbConnection con;
@@ -12,7 +12,7 @@ namespace sqlite_bench
 
         protected long last_id = -1;
 
-        public SQLiteBenchmark(Backends backend)
+        public SQLiteBenchmarkParallel(Backends backend)
         {
             var data_source = "testdb.sqlite";
 
