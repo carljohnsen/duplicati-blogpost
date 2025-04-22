@@ -125,7 +125,9 @@ namespace sqlite_bench
                 sqlite3_reset(stmt);
             }
             Execute("COMMIT;");
+#if DEBUG
             Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
+#endif
         }
 
         [GlobalCleanup]

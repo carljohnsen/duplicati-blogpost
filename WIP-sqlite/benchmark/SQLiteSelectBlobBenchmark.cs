@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using Duplicati.Library.Main.Database;
 using System.Data;
+using System.Diagnostics;
 using System.Text;
 
 namespace sqlite_bench
@@ -9,8 +10,8 @@ namespace sqlite_bench
     [MinColumn, MaxColumn, AllStatisticsColumn]
     public class SQLiteSelectBlobBenchmark : SQLiteBenchmark
     {
-        [ParamsAllValues]
-        public static Backends Backend { get; set; }
+        //[ParamsAllValues]
+        public static Backends Backend { get; set; } = Backends.DuplicatiSQLite;
 
         [ParamsSource(nameof(ValidParams))]
         public BenchmarkParams BenchmarkParams { get; set; } = new BenchmarkParams();
@@ -20,6 +21,7 @@ namespace sqlite_bench
         private readonly IDbCommand m_createIndexCommand;
         private readonly IDbCommand m_insertBlocksetManagedCommand;
         private readonly IDbCommand m_selectCommand;
+        private Stopwatch sw = new Stopwatch();
 
         //[Params(0, 1_000, 10_000, 100_000)]
         [Params(1_000_000)]
@@ -168,10 +170,16 @@ namespace sqlite_bench
             {
                 PackEntry(length, hash, buffer);
                 m_selectCommand.SetParameterValue("fullhashlength", buffer);
+                sw.Start();
                 var id = m_selectCommand.ExecuteScalarInt64(transaction);
                 if (id < 0)
                     throw new Exception($"ID not found for {buffer}");
+                sw.Stop();
             }
+
+#if DEBUG
+            Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
+#endif
         }
 
         public static IEnumerable<BenchmarkParams> ValidParams()

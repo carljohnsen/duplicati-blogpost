@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using Duplicati.Library.Main.Database;
 using System.Data;
+using System.Diagnostics;
 using System.Text;
 
 namespace sqlite_bench
@@ -9,8 +10,8 @@ namespace sqlite_bench
     [MinColumn, MaxColumn, AllStatisticsColumn]
     public class SQLiteSelectBenchmark : SQLiteBenchmark
     {
-        [ParamsAllValues]
-        public static Backends Backend { get; set; } = Backends.MicrosoftSQLite;
+        //[ParamsAllValues]
+        public static Backends Backend { get; set; } = Backends.DuplicatiSQLite;
 
         [ParamsSource(nameof(ValidParams))]
         public BenchmarkParams BenchmarkParams { get; set; } = new BenchmarkParams();
@@ -24,6 +25,8 @@ namespace sqlite_bench
         private readonly IDbCommand m_selectCommand;
         private readonly IDbCommand m_selectHashOnlyCommand;
         private readonly IDbCommand m_selectLengthOnlyCommand;
+
+        private Stopwatch sw = new Stopwatch();
 
         //[Params(0, 1_000, 10_000, 100_000)]
         [Params(1_000_000)]
@@ -109,7 +112,7 @@ namespace sqlite_bench
 
             transaction = con.BeginTransaction();
 
-            var buffer = new byte[32];
+            var buffer = new byte[44];
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
             // Generate random data to insert
@@ -152,13 +155,19 @@ namespace sqlite_bench
                 var (length, fullhash) = entries[i];
                 m_selectCommand.SetParameterValue("length", length);
                 m_selectCommand.SetParameterValue("fullhash", fullhash);
+                sw.Start();
                 var id = m_selectCommand.ExecuteScalarInt64(transaction);
+                sw.Stop();
                 if (id < 0)
                     throw new Exception($"ID not found for {length}, {fullhash}");
             }
+
+#if DEBUG
+            Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
+#endif
         }
 
-        [Benchmark]
+        //[Benchmark]
         public void SelectHashOnlyBenchmark()
         {
             transaction ??= con.BeginTransaction();

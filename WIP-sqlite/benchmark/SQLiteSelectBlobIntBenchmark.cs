@@ -1,6 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using Duplicati.Library.Main.Database;
 using System.Data;
+using System.Diagnostics;
 using System.Text;
 
 namespace sqlite_bench
@@ -20,6 +21,7 @@ namespace sqlite_bench
         private readonly IDbCommand m_createIndexCommand;
         private readonly IDbCommand m_insertBlocksetManagedCommand;
         private readonly IDbCommand m_selectCommand;
+        private Stopwatch sw = new Stopwatch();
 
         //[Params(0, 1_000, 10_000, 100_000)]
         [Params(0)]
@@ -172,7 +174,9 @@ namespace sqlite_bench
             {
                 var firsthash = BitConverter.ToInt64(hash, 0);
                 m_selectCommand.SetParameterValue("firsthash", firsthash);
+                sw.Start();
                 using var reader = m_selectCommand.ExecuteReader();
+                sw.Stop();
                 var found = false;
                 long read_id = -1;
                 while (reader.Read())
@@ -193,7 +197,11 @@ namespace sqlite_bench
 
                 if (!found || read_id != id)
                     throw new Exception($"ID not found ({read_id} != {id}) for {BitConverter.ToString(hash)}");
+
             }
+#if DEBUG
+            Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
+#endif
         }
 
         public static IEnumerable<BenchmarkParams> ValidParams()
