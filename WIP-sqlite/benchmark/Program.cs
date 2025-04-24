@@ -21,10 +21,10 @@ namespace sqlite_bench
 
             // Selection benchmark
             var sw = new System.Diagnostics.Stopwatch();
-            using var b = new SQLiteSelectBenchmark();
+            using var b = new SQLiteSelectParallelBenchmark();
             Console.WriteLine("GlobalSetup...");
-            b.PreFilledCount = 1_000_000;
-            b.BenchmarkParams.Count = 1_000_000;
+            b.PreFilledCount = 0;
+            b.BenchmarkParams.Count = 100_000;
             sw.Restart();
             b.GlobalSetup();
             sw.Stop();
@@ -39,8 +39,8 @@ namespace sqlite_bench
             //b.SelectHashOnlyIntBenchmark();
             Console.WriteLine("Done!");
 #else
-            BenchmarkRunner.Run<SQLiteSelectBenchmark>();
-            BenchmarkRunner.Run<SQLiteSelectPInvokeBenchmark>();
+            //BenchmarkRunner.Run<SQLiteSelectBenchmark>();
+            //BenchmarkRunner.Run<SQLiteSelectPInvokeBenchmark>();
 #endif
         }
     }

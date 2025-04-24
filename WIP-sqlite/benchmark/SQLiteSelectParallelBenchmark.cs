@@ -8,7 +8,7 @@ namespace sqlite_bench
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class SQLiteSelectParallelBenchmark : SQLiteBenchmarkSequential
+    public class SQLiteSelectParallelBenchmark : SQLiteBenchmarkParallel
     {
         //[ParamsAllValues]
         public static Backends Backend { get; set; } = Backends.DuplicatiSQLite;
@@ -16,32 +16,29 @@ namespace sqlite_bench
         [ParamsSource(nameof(ValidParams))]
         public BenchmarkParams BenchmarkParams { get; set; } = new BenchmarkParams();
 
-        private List<(long, string)> entries = [];
+        private List<(long, long, string)> entries = [];
 
         private readonly IDbCommand m_createIndexCommand;
         private readonly IDbCommand m_dropIndexCommand;
-        private readonly IDbCommand m_dropTableCommand;
         private readonly IDbCommand m_insertBlocksetManagedCommand;
-        private readonly IDbCommand m_selectCommand;
-        private readonly IDbCommand m_selectHashOnlyCommand;
-        private readonly IDbCommand m_selectLengthOnlyCommand;
-
-        private Stopwatch sw = new Stopwatch();
+        private readonly List<IDbCommand> m_selectCommands = [];
 
         //[Params(0, 1_000, 10_000, 100_000)]
         [Params(1_000_000)]
         public int PreFilledCount { get; set; } = 0;
 
-        public SQLiteSelectParallelBenchmark() : base(Backend)
+        [Params(1, 2, 4, 8)]
+        public static int Parallelism { get; set; } = 1;
+
+        public SQLiteSelectParallelBenchmark() : base(Backend, Parallelism)
         {
-            RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
-            m_createIndexCommand = CreateCommand(SQLQeuriesOriginal.CreateIndex);
-            m_dropIndexCommand = CreateCommand(SQLQeuriesOriginal.DropIndex);
-            m_dropTableCommand = CreateCommand(SQLQeuriesOriginal.DropTable);
-            m_insertBlocksetManagedCommand = CreateCommand(SQLQeuriesOriginal.InsertBlocksetManaged);
-            m_selectCommand = CreateCommand(SQLQeuriesOriginal.FindBlockset);
-            m_selectHashOnlyCommand = CreateCommand(SQLQeuriesOriginal.FindBlocksetHashOnly);
-            m_selectLengthOnlyCommand = CreateCommand(SQLQeuriesOriginal.FindBlocksetLengthOnly);
+            m_createIndexCommand = CreateCommand(cons[0], SQLQeuriesOriginal.CreateIndex);
+            m_dropIndexCommand = CreateCommand(cons[0], SQLQeuriesOriginal.DropIndex);
+            m_insertBlocksetManagedCommand = CreateCommand(cons[0], SQLQeuriesOriginal.InsertBlocksetManaged);
+            for (int i = 0; i < Parallelism; i++)
+            {
+                m_selectCommands.Add(CreateCommand(cons[i], SQLQeuriesOriginal.FindBlockset));
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -49,13 +46,16 @@ namespace sqlite_bench
             m_createIndexCommand.Dispose();
             m_dropIndexCommand.Dispose();
             m_insertBlocksetManagedCommand.Dispose();
-            m_selectCommand.Dispose();
+            for (int i = 0; i < Parallelism; i++)
+            {
+                m_selectCommands[i].Dispose();
+            }
             base.Dispose(disposing);
         }
 
         private void ListIndexAndPlan()
         {
-            using var cmd = con.CreateCommand();
+            using var cmd = cons[0].CreateCommand();
             cmd.CommandText = @"PRAGMA index_list(""Blockset"")";
             using (var reader = cmd.ExecuteReader())
             {
@@ -108,9 +108,9 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             var rng = new Random(20250411);
-            RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
+            RunNonQueries(cons[0], [SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries], true);
 
-            transaction = con.BeginTransaction();
+            transactions[0] = cons[0].BeginTransaction();
 
             var buffer = new byte[44];
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -122,101 +122,69 @@ namespace sqlite_bench
                 for (int j = 0; j < buffer.Length; j++)
                     buffer[j] = (byte)(buffer[j] % alphanumericChars.Length);
 
-                var entry = (rng.NextInt64() % 100, new string([.. buffer.Select(x => alphanumericChars[x])]));
+                var entry = (i + 1, rng.NextInt64() % 100, new string([.. buffer.Select(x => alphanumericChars[x])]));
                 entries.Add(entry);
-                m_insertBlocksetManagedCommand.SetParameterValue("id", i);
-                m_insertBlocksetManagedCommand.SetParameterValue("length", entry.Item1);
-                m_insertBlocksetManagedCommand.SetParameterValue("fullhash", entry.Item2);
-                m_insertBlocksetManagedCommand.ExecuteNonQuery(transaction);
+                m_insertBlocksetManagedCommand.SetParameterValue("id", entry.Item1);
+                m_insertBlocksetManagedCommand.SetParameterValue("length", entry.Item2);
+                m_insertBlocksetManagedCommand.SetParameterValue("fullhash", entry.Item3);
+                m_insertBlocksetManagedCommand.ExecuteNonQuery(transactions[0]);
             }
 
             if (BenchmarkParams.UseIndex)
-                m_createIndexCommand.ExecuteNonQuery(transaction);
+                m_createIndexCommand.ExecuteNonQuery(transactions[0]);
 
             // Shuffle and take a subset of the entries
             entries = [.. entries.OrderBy(x => Guid.NewGuid()).Take(BenchmarkParams.Count)];
 
-            transaction.Commit();
-            transaction.Dispose();
+            transactions[0]?.Commit();
+            transactions[0]?.Dispose();
+            transactions[0] = null;
+
+            for (int i = 0; i < Parallelism; i++)
+                RunNonQueries(cons[i], SQLQeuriesOriginal.PragmaQueries, false);
 
             ListIndexAndPlan();
-
-            if (BenchmarkParams.UseTransaction)
-                transaction = con.BeginTransaction();
         }
 
         [Benchmark]
         public void SelectBenchmark()
         {
-            transaction ??= con.BeginTransaction();
-
-            for (int i = 0; i < entries.Count; i++)
+            int entries_per_thread = entries.Count / Parallelism;
+            Parallel.For(0, Parallelism, i =>
             {
-                var (length, fullhash) = entries[i];
-                m_selectCommand.SetParameterValue("length", length);
-                m_selectCommand.SetParameterValue("fullhash", fullhash);
-                sw.Start();
-                var id = m_selectCommand.ExecuteScalarInt64(transaction);
-                sw.Stop();
-                if (id < 0)
-                    throw new Exception($"ID not found for {length}, {fullhash}");
-            }
+                var sw = new Stopwatch();
+                int begin = i * entries_per_thread;
+                int end = Math.Min((i + 1) * entries_per_thread, entries.Count);
+                int n_entries = end - begin;
+                //transactions[i] ??= cons[i].BeginTransaction();
+                using var cmd = cons[i].CreateCommand();
+                cmd.ExecuteNonQuery("BEGIN DEFERRED TRANSACTION;");
+                cmd.CommandText = SQLQeuriesOriginal.FindBlockset;
+                cmd.AddNamedParameter("length", 0L);
+                cmd.AddNamedParameter("fullhash", string.Empty);
+                cmd.Prepare();
+
+                for (int j = begin; j < end; j++)
+                {
+                    var (id, length, fullhash) = entries[j];
+                    cmd.SetParameterValue("length", length);
+                    cmd.SetParameterValue("fullhash", fullhash);
+                    sw.Start();
+                    var read_id = cmd.ExecuteScalarInt64();
+                    sw.Stop();
+                    if (read_id != id)
+                        throw new Exception($"ID not found for {length}, {fullhash}");
+                }
+                cmd.ExecuteNonQuery("COMMIT;");
 
 #if DEBUG
-            Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
+                Console.WriteLine($"Stepping took {sw.ElapsedMilliseconds} ms ({(n_entries / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
 #endif
-        }
 
-        //[Benchmark]
-        public void SelectHashOnlyBenchmark()
-        {
-            transaction ??= con.BeginTransaction();
-
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var (length, fullhash) = entries[i];
-                m_selectHashOnlyCommand.SetParameterValue("fullhash", fullhash);
-                using var reader = m_selectHashOnlyCommand.ExecuteReader();
-                bool found = false;
-                while (reader.Read())
-                {
-                    var read_id = reader.GetInt64(0);
-                    var read_length = reader.GetInt64(1);
-                    if (read_length == length)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
-                    throw new Exception($"Hash {fullhash} not found");
-            }
-        }
-
-        //[Benchmark]
-        public void SelectLengthOnlyBenchmark()
-        {
-            transaction ??= con.BeginTransaction();
-
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var (length, fullhash) = entries[i];
-                m_selectLengthOnlyCommand.SetParameterValue("length", length);
-                using var reader = m_selectLengthOnlyCommand.ExecuteReader();
-                bool found = false;
-                while (reader.Read())
-                {
-                    var read_id = reader.GetInt64(0);
-                    var hash = reader.GetString(1);
-                    if (hash == fullhash)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
-                    throw new Exception($"Length {length} not found");
-            }
+                transactions[i]?.Commit();
+                transactions[i]?.Dispose();
+                transactions[i] = null;
+            });
         }
 
         public static IEnumerable<BenchmarkParams> ValidParams()

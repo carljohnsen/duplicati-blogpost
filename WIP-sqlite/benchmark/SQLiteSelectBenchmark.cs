@@ -108,6 +108,7 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             var rng = new Random(20250411);
+            // TODO queries.pragma queries has been split up.
             RunNonQueries([SQLQeuriesOriginal.DropIndex, SQLQeuriesOriginal.DropTable, .. SQLQeuriesOriginal.TableQueries]);
 
             transaction = con.BeginTransaction();

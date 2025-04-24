@@ -5,42 +5,48 @@ namespace sqlite_bench
 {
     public class SQLiteBenchmarkParallel : IDisposable
     {
-        // The SQLite connection
-        protected IDbConnection con;
-
-        protected IDbTransaction? transaction;
+        // The SQLite connections
+        protected List<IDbConnection> cons = [];
+        protected List<IDbTransaction?> transactions = [];
 
         protected long last_id = -1;
 
-        public SQLiteBenchmarkParallel(Backends backend)
+        public SQLiteBenchmarkParallel(Backends backend, int count)
         {
             var data_source = "testdb.sqlite";
 
-            switch (backend)
+            IDbConnection con;
+
+            for (int i = 0; i < count; i++)
             {
-                case Backends.DuplicatiSQLite:
-                    con = Duplicati.Library.SQLiteHelper.SQLiteLoader.LoadConnection();
-                    con.Close();
-                    con.ConnectionString = $"Data Source={data_source}";
-                    con.Open();
-                    break;
-                case Backends.MicrosoftSQLite:
-                    con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}");
-                    con.Open();
-                    break;
-                case Backends.SystemSQLite:
-                    con = new System.Data.SQLite.SQLiteConnection($"Data Source={data_source}");
-                    con.Open();
-                    break;
-                //case Backends.Dictionary:
-                //    con = new Dictionary<string, string>();
-                //    break;
-                default:
-                    throw new NotImplementedException();
+                switch (backend)
+                {
+                    case Backends.DuplicatiSQLite:
+                        con = Duplicati.Library.SQLiteHelper.SQLiteLoader.LoadConnection();
+                        con.Close();
+                        con.ConnectionString = $"Data Source={data_source};cache=shared";
+                        con.Open();
+                        cons.Add(con);
+                        break;
+                    case Backends.MicrosoftSQLite:
+                        con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}");
+                        con.Open();
+                        cons.Add(con);
+                        break;
+                    case Backends.SystemSQLite:
+                        con = new System.Data.SQLite.SQLiteConnection($"Data Source={data_source}");
+                        con.Open();
+                        cons.Add(con);
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
+
+                transactions.Add(null);
             }
         }
 
-        protected IDbCommand CreateCommand(string query)
+        protected IDbCommand CreateCommand(IDbConnection con, string query)
         {
             var cmd = con.CreateCommand();
             cmd.CommandText = query;
@@ -67,30 +73,36 @@ namespace sqlite_bench
 
         protected virtual void Dispose(bool _)
         {
-            try
+            for (int i = 0; i < cons.Count; i++)
             {
-                transaction?.Commit();
+                var transaction = transactions[i];
+                var con = cons[i];
+
+                try
+                {
+                    transaction?.Commit();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Ignore, transaction already committed
+                }
+                catch (System.Data.SQLite.SQLiteException)
+                {
+                    // Ignore, transaction already committed
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+                transaction?.Dispose();
+                con.Close();
+                con.Dispose();
             }
-            catch (InvalidOperationException)
-            {
-                // Ignore, transaction already committed
-            }
-            catch (System.Data.SQLite.SQLiteException)
-            {
-                // Ignore, transaction already committed
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-            transaction?.Dispose();
-            con.Close();
-            con.Dispose();
         }
 
         protected void DropRows()
         {
-            using IDbCommand cmd = con.CreateCommand();
+            using IDbCommand cmd = cons[0].CreateCommand();
             cmd.CommandText = SQLQeuriesOriginal.DropAllRows;
             cmd.AddNamedParameter("id", last_id);
             cmd.ExecuteNonQuery();
@@ -98,21 +110,21 @@ namespace sqlite_bench
 
         protected long GetLastRowId()
         {
-            using var cmd = con.CreateCommand();
+            using var cmd = cons[0].CreateCommand();
             cmd.CommandText = SQLQeuriesOriginal.LastRowId;
             return cmd.ExecuteScalarInt64();
         }
 
-        protected void RunNonQueries(string[] queries)
+        protected void RunNonQueries(IDbConnection con, string[] queries, bool use_transaction)
         {
             using var cmd = con.CreateCommand();
-            using var transaction = con.BeginTransaction();
+            using var transaction = use_transaction ? con.BeginTransaction() : null;
             foreach (var query in queries)
             {
                 cmd.CommandText = query;
                 cmd.ExecuteNonQuery(transaction);
             }
-            transaction.Commit();
+            transaction?.Commit();
         }
     }
 }
