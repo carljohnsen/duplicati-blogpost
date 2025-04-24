@@ -77,11 +77,19 @@ namespace sqlite_bench
         public static readonly string TempTable = @"CREATE TEMP TABLE IF NOT EXISTS ""BlocksetTmp"" (""ID"" INTEGER PRIMARY KEY, ""Length"" INTEGER NOT NULL, ""FullHash"" TEXT NOT NULL)";
 
         public static readonly string[] TableQueries = [
-                @"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""Length"" INTEGER NOT NULL, ""FullHash"" TEXT NOT NULL)",
-                //"PRAGMA synchronous = OFF",
-                //"PRAGMA journal_mode = OFF",
-                "PRAGMA cache_size = 1000000",
-                //"PRAGMA threads = 8",
+                @"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""Length"" INTEGER NOT NULL, ""FullHash"" TEXT NOT NULL)"
+            ];
+        public static readonly string[] PragmaQueries = [
+                "PRAGMA synchronous = OFF",
+                "PRAGMA temp_store = MEMORY",
+                "PRAGMA journal_mode = WAL",
+                "PRAGMA cache_size = -512000",
+                "PRAGMA query_only = true",
+                "PRAGMA threads = 8",
+                "PRAGMA read_uncommitted = true",
+                "PRAGMA mmap_size = 536870912",
+                "PRAGMA shared_cache = true",
+                "PRAGMA optimize",
             ];
     }
 
