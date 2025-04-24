@@ -2,5 +2,5 @@ bin/
 obj/
 .DS_Store
 data*
-*.sqlite
+*.sqlite*
 BenchmarkDotNet.Artifacts/
