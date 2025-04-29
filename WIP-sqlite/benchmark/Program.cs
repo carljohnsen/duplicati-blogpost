@@ -1,13 +1,15 @@
-﻿using BenchmarkDotNet.Running;
+﻿using System.Threading.Tasks;
+using BenchmarkDotNet.Running;
 
 namespace sqlite_bench
 {
 
     public class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-#if DEBUG
+            //#if DEBUG
+#if true
             /* // Insertion benchmark
             using var b = new SQLiteInsertBenchmark();
             b.GlobalSetup();
@@ -24,14 +26,14 @@ namespace sqlite_bench
             using var b = new SQLiteSelectParallelBenchmark();
             Console.WriteLine("GlobalSetup...");
             b.PreFilledCount = 0;
-            b.BenchmarkParams.Count = 100_000;
+            b.BenchmarkParams.Count = 10_000_000;
             sw.Restart();
-            b.GlobalSetup();
+            await b.GlobalSetup();
             sw.Stop();
             Console.WriteLine($"GlobalSetup took {sw.ElapsedMilliseconds} ms ({((b.BenchmarkParams.Count + b.PreFilledCount) / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
             Console.WriteLine("Running SelectBenchmark...");
             sw.Restart();
-            b.SelectBenchmark();
+            await b.SelectBenchmark();
             sw.Stop();
             Console.WriteLine($"SelectBenchmark took {sw.ElapsedMilliseconds} ms ({(b.BenchmarkParams.Count / 1000) / sw.Elapsed.TotalSeconds:0.00} kops/sec)");
             //b.SelectFullHashOnlyBenchmark();

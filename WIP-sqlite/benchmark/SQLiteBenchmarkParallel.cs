@@ -1,52 +1,29 @@
-using Duplicati.Library.Main.Database;
+//using Duplicati.Library.Main.Database;
 using System.Data;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
 
 namespace sqlite_bench
 {
     public class SQLiteBenchmarkParallel : IDisposable
     {
         // The SQLite connections
-        protected List<IDbConnection> cons = [];
-        protected List<IDbTransaction?> transactions = [];
+        protected List<SqliteConnection> cons = [];
+        protected List<SqliteTransaction?> transactions = [];
 
         protected long last_id = -1;
+        protected readonly string data_source = "testdb.sqlite";
 
-        public SQLiteBenchmarkParallel(Backends backend, int count)
+        public SQLiteBenchmarkParallel()
         {
-            var data_source = "testdb.sqlite";
-
-            IDbConnection con;
-
-            for (int i = 0; i < count; i++)
+            // Delete the database file if it exists
+            if (File.Exists(data_source))
             {
-                switch (backend)
-                {
-                    case Backends.DuplicatiSQLite:
-                        con = Duplicati.Library.SQLiteHelper.SQLiteLoader.LoadConnection();
-                        con.Close();
-                        con.ConnectionString = $"Data Source={data_source};cache=shared";
-                        con.Open();
-                        cons.Add(con);
-                        break;
-                    case Backends.MicrosoftSQLite:
-                        con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}");
-                        con.Open();
-                        cons.Add(con);
-                        break;
-                    case Backends.SystemSQLite:
-                        con = new System.Data.SQLite.SQLiteConnection($"Data Source={data_source}");
-                        con.Open();
-                        cons.Add(con);
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-
-                transactions.Add(null);
+                File.Delete(data_source);
             }
         }
 
-        protected IDbCommand CreateCommand(IDbConnection con, string query)
+        protected SqliteCommand CreateCommand(SqliteConnection con, string query)
         {
             var cmd = con.CreateCommand();
             cmd.CommandText = query;
@@ -63,6 +40,39 @@ namespace sqlite_bench
 
             cmd.Prepare();
             return cmd;
+        }
+
+        protected SqliteConnection CreateConnection(Backends backend, string extra_keywords = "")
+        {
+            SqliteConnection con;
+
+            switch (backend)
+            {
+                case Backends.MicrosoftSQLite:
+                    con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={data_source}{extra_keywords}");
+                    break;
+                case Backends.DuplicatiSQLite:
+                case Backends.SystemSQLite:
+                default:
+                    throw new NotImplementedException();
+            }
+
+            con.Open();
+
+            return con;
+        }
+
+        protected void CreateConnections(Backends backend, int count, string extra_keywords = "")
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var con = CreateConnection(backend, extra_keywords);
+
+                RunNonQueries(con, SQLQeuriesOriginal.PragmaQueries).Wait();
+                cons.Add(con);
+
+                transactions.Add(null);
+            }
         }
 
         public void Dispose()
@@ -100,31 +110,30 @@ namespace sqlite_bench
             }
         }
 
-        protected void DropRows()
+        protected async Task DropRows()
         {
-            using IDbCommand cmd = cons[0].CreateCommand();
+            using SqliteCommand cmd = cons[0].CreateCommand();
             cmd.CommandText = SQLQeuriesOriginal.DropAllRows;
-            cmd.AddNamedParameter("id", last_id);
-            cmd.ExecuteNonQuery();
+            cmd.Parameters.AddWithValue("@id", last_id);
+            await cmd.ExecuteNonQueryAsync();
         }
 
-        protected long GetLastRowId()
+        protected async Task<long> GetLastRowId()
         {
             using var cmd = cons[0].CreateCommand();
             cmd.CommandText = SQLQeuriesOriginal.LastRowId;
-            return cmd.ExecuteScalarInt64();
+            var result = await cmd.ExecuteScalarAsync();
+            return result == null ? -1 : Convert.ToInt64(result);
         }
 
-        protected void RunNonQueries(IDbConnection con, string[] queries, bool use_transaction)
+        protected static async Task RunNonQueries(SqliteConnection con, string[] queries)
         {
-            using var cmd = con.CreateCommand();
-            using var transaction = use_transaction ? con.BeginTransaction() : null;
+            using SqliteCommand cmd = con.CreateCommand();
             foreach (var query in queries)
             {
                 cmd.CommandText = query;
-                cmd.ExecuteNonQuery(transaction);
+                await cmd.ExecuteNonQueryAsync();
             }
-            transaction?.Commit();
         }
     }
 }

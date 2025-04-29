@@ -80,16 +80,16 @@ namespace sqlite_bench
                 @"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""Length"" INTEGER NOT NULL, ""FullHash"" TEXT NOT NULL)"
             ];
         public static readonly string[] PragmaQueries = [
-                "PRAGMA synchronous = OFF",
-                "PRAGMA temp_store = MEMORY",
-                "PRAGMA journal_mode = WAL",
-                "PRAGMA cache_size = -512000",
-                "PRAGMA query_only = true",
-                "PRAGMA threads = 8",
-                "PRAGMA read_uncommitted = true",
-                "PRAGMA mmap_size = 536870912",
-                "PRAGMA shared_cache = true",
-                "PRAGMA optimize",
+                "PRAGMA synchronous = NORMAL;",
+                "PRAGMA temp_store = MEMORY;",
+                "PRAGMA journal_mode = WAL;",
+                "PRAGMA cache_size = -512000;",
+                //"PRAGMA query_only = true;",
+                "PRAGMA threads = 8;",
+                "PRAGMA read_uncommitted = 1;",
+                "PRAGMA mmap_size = 4194304;",
+                "PRAGMA shared_cache = true;",
+                //"PRAGMA optimize;",
             ];
     }
 

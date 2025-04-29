@@ -36,19 +36,18 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             int return_code = -1;
-            var dbPath = Path.GetFullPath("pinvoke_benchmark.db");
+            var dbPath = Path.GetFullPath("pinvoke_benchmark.sqlite");
             if (File.Exists(dbPath)) File.Delete(dbPath);
 
             sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
             return_code = sqlite3_open(dbPath, out db);
             if (return_code != 0)
                 throw new Exception($"Failed to open database: {return_code}");
-            Execute("PRAGMA cache_size = -2000000;");
-            Execute("PRAGMA journal_mode = OFF;");
-            Execute("PRAGMA synchronous = OFF;");
+            Execute("PRAGMA journal_mode = WAL;");
             Execute(@"CREATE TABLE IF NOT EXISTS ""Blockset"" (""ID"" INTEGER PRIMARY KEY, ""Length"" INTEGER NOT NULL, ""FullHash"" TEXT NOT NULL);");
+            Execute(@"CREATE UNIQUE INDEX IF NOT EXISTS ""BlocksetLengthHash"" ON ""Blockset"" (""Length"", ""FullHash"");");
 
-            var insertSql = @"INSERT INTO ""Blockset"" (""Id"", ""Length"", ""FullHash"") VALUES (?, ?, ?);";
+            var insertSql = @"INSERT INTO ""Blockset"" (""ID"", ""Length"", ""FullHash"") VALUES (?, ?, ?);";
             sqlite3_prepare_v2(db, insertSql, -1, out var insertStmt, IntPtr.Zero);
 
             var rng = new Random(42);
@@ -57,17 +56,17 @@ namespace sqlite_bench
             var alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
             // Generate random data to insert
-            Execute("BEGIN TRANSACTION;");
+            Execute("BEGIN DEFERRED TRANSACTION;");
             for (long i = 0; i < BenchmarkParams.Count + PreFilledCount; i++)
             {
                 rng.NextBytes(buffer);
                 for (int j = 0; j < buffer.Length; j++)
                     buffer[j] = (byte)alphanumericChars[buffer[j] % alphanumericChars.Length];
 
-                var entry = (i, rng.NextInt64() % 100, new string([.. buffer.Select(x => (char)x)]));
+                var entry = (i + 1, rng.NextInt64() % 100, new string([.. buffer.Select(x => (char)x)]));
                 entries.Add(entry);
 
-                return_code = sqlite3_bind_int64(insertStmt, 1, i);
+                return_code = sqlite3_bind_int64(insertStmt, 1, entry.Item1);
                 if (return_code != 0) throw new Exception($"Failed to bind ID: {return_code}");
                 return_code = sqlite3_bind_int64(insertStmt, 2, entry.Item2);
                 if (return_code != 0) throw new Exception($"Failed to bind ID: {return_code}");
@@ -90,13 +89,12 @@ namespace sqlite_bench
 
             entries = [.. entries.OrderBy(x => Guid.NewGuid()).Take(BenchmarkParams.Count)];
 
-            Execute(@"CREATE UNIQUE INDEX IF NOT EXISTS ""BlocksetLengthHash"" ON ""Blockset"" (""Length"", ""FullHash"");");
 
             sqlite3_finalize(insertStmt);
 
             Execute("PRAGMA optimize;");
-            Execute("ANALYZE;");
-            Execute("VACUUM;");
+            //Execute("ANALYZE;");
+            //Execute("VACUUM;");
 
             //sqlite3_prepare_v2(db, selectSql, -1, out stmt, IntPtr.Zero);
             sqlite3_prepare_v3(db, selectSql, -1, SQLITE_PREPARE_PERSISTENT, out stmt, IntPtr.Zero);
@@ -111,8 +109,17 @@ namespace sqlite_bench
             var sw_transaction = new System.Diagnostics.Stopwatch();
             var sw_reset = new System.Diagnostics.Stopwatch();
 
+            Execute("PRAGMA synchronous = NORMAL;");
+            Execute("PRAGMA temp_store = MEMORY;");
+            Execute("PRAGMA journal_mode = WAL;");
+            Execute("PRAGMA cache_size = -512000;");
+            Execute("PRAGMA threads = 8;");
+            Execute("PRAGMA read_uncommitted = true;");
+            Execute("mmap_size = 4194304;");
+            Execute("PRAGMA shared_cache = true;");
+
             sw_transaction.Start();
-            Execute("BEGIN TRANSACTION;");
+            Execute("BEGIN DEFERRED TRANSACTION;");
             sw_transaction.Stop();
             foreach (var (id, length, hash) in entries)
             {
@@ -132,20 +139,23 @@ namespace sqlite_bench
                 sw_bind.Stop();
 
                 sw_step.Start();
-                bool found = false;
-                var read_id = -1;
-                while (sqlite3_step(stmt) == 100)
-                {
-                    // 100 = SQLITE_ROW, 101 = SQLITE_DONE
-                    // 101 means no more rows, so we stop
-                    // 100 means we have a row to read
-                    // 0 means error
+                // bool found = false;
+                // var read_id = -1;
+                // while (sqlite3_step(stmt) == 100)
+                // {
+                //     // 100 = SQLITE_ROW, 101 = SQLITE_DONE
+                //     // 101 means no more rows, so we stop
+                //     // 100 means we have a row to read
+                //     // 0 means error
 
-                    // Read the row
-                    read_id = sqlite3_column_int64(stmt, 0);
-                    found = read_id == id;
-                    break;
-                }
+                //     // Read the row
+                //     read_id = sqlite3_column_int64(stmt, 0);
+                //     found = read_id == id;
+                //     break;
+                // }
+                sqlite3_step(stmt);
+                var read_id = sqlite3_column_int64(stmt, 0);
+                var found = read_id == id;
                 sw_step.Stop();
 
                 if (!found)
