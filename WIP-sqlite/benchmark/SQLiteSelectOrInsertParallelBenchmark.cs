@@ -150,17 +150,26 @@ namespace sqlite_bench
                 Console.WriteLine($"Thread {i}: {begin} - {end} ({n_entries}) ({entries.Count})");
 #endif
                 var con = cons[i];
-                using var cmd = CreateCommand(con, SQLQeuriesOriginal.FindBlockset);
+                using var cmd = con.CreateCommand();
+                cmd.CommandText = SQLQeuriesOriginal.FindBlockset;
+                cmd.Parameters.Add("@length", SqliteType.Integer, 8);
+                cmd.Parameters.Add("@fullhash", SqliteType.Text, 44);
+                await cmd.PrepareAsync();
                 cmd.Transaction = con.BeginTransaction(deferred: true);
-                using var cmd2 = CreateCommand(con, SQLQeuriesOriginal.InsertBlocksetManaged);
+                using var cmd2 = con.CreateCommand();
+                cmd2.CommandText = SQLQeuriesOriginal.InsertBlocksetManaged;
+                cmd2.Parameters.Add("@id", SqliteType.Integer, 8);
+                cmd2.Parameters.Add("@length", SqliteType.Integer, 8);
+                cmd2.Parameters.Add("@fullhash", SqliteType.Text, 44);
+                await cmd2.PrepareAsync();
 
                 for (int j = begin; j < end; j++)
                 {
                     var (id, length, fullhash) = entries[j];
 
                     sw.Start();
-                    cmd.Parameters["length"].Value = length;
-                    cmd.Parameters["fullhash"].Value = fullhash;
+                    cmd.Parameters["@length"].Value = length;
+                    cmd.Parameters["@fullhash"].Value = fullhash;
                     var read_res = await cmd.ExecuteScalarAsync();
                     var read_id = read_res == null ? -1 : Convert.ToInt64(read_res);
                     sw.Stop();
@@ -169,9 +178,9 @@ namespace sqlite_bench
                     {
                         await cmd.Transaction.CommitAsync();
                         cmd2.Transaction = con.BeginTransaction();
-                        cmd2.Parameters["id"].Value = ++last_id;
-                        cmd2.Parameters["length"].Value = length;
-                        cmd2.Parameters["fullhash"].Value = fullhash;
+                        cmd2.Parameters["@id"].Value = ++last_id;
+                        cmd2.Parameters["@length"].Value = length;
+                        cmd2.Parameters["@fullhash"].Value = fullhash;
                         await cmd2.ExecuteNonQueryAsync();
                         await cmd2.Transaction.CommitAsync();
                         cmd.Transaction = con.BeginTransaction(deferred: true);
