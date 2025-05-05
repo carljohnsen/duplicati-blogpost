@@ -42,7 +42,7 @@ namespace sqlite_bench
             return cmd;
         }
 
-        protected SqliteConnection CreateConnection(Backends backend, string extra_keywords = "")
+        protected async Task<SqliteConnection> CreateConnection(Backends backend, string extra_keywords = "")
         {
             SqliteConnection con;
 
@@ -57,18 +57,18 @@ namespace sqlite_bench
                     throw new NotImplementedException();
             }
 
-            con.Open();
+            await con.OpenAsync();
 
             return con;
         }
 
-        protected void CreateConnections(Backends backend, int count, string extra_keywords = "")
+        protected async Task CreateConnections(Backends backend, int count, string extra_keywords = "")
         {
             for (int i = 0; i < count; i++)
             {
-                var con = CreateConnection(backend, extra_keywords);
+                var con = await CreateConnection(backend, extra_keywords);
 
-                RunNonQueries(con, SQLQeuriesOriginal.PragmaQueries).Wait();
+                await RunNonQueries(con, SQLQeuriesOriginal.PragmaQueries);
                 cons.Add(con);
 
                 transactions.Add(null);

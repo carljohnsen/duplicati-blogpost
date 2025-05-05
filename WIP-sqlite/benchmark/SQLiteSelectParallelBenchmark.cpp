@@ -7,8 +7,8 @@
 #include <chrono>
 #include <stdint.h>
 
-const int kNumEntries = 1'00'000;
-const int kParallelism = 1;
+const int kNumEntries = 1'000'000;
+const int kParallelism = 8;
 const std::string kDBPath = "benchmark.sqlite";
 // const std::string kDBPath = ":memory:";
 
