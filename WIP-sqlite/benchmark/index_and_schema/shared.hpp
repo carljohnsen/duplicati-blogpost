@@ -36,11 +36,12 @@ bool assert_sqlite_return_code(int rc, sqlite3 *db, const std::string &context)
 }
 
 template <typename T>
-bool assert_value_matches(const T &expected, const T &actual, const std::string &context)
+bool assert_value_matches(const T &expected, const T &actual, const std::string &context, bool print_error = true)
 {
     if (expected != actual)
     {
-        std::cerr << "Value mismatch in " << context << ": expected " << expected << ", got " << actual << std::endl;
+        if (print_error)
+            std::cerr << "Value mismatch in " << context << ": expected " << expected << ", got " << actual << std::endl;
         return false;
     }
     return true;
