@@ -162,9 +162,38 @@ UPDATE Blockset SET Length = Length + ? WHERE ID = ?;
 
 ## Tuning
 
+As this blog post focuses on isolating the performance of SQLite, we will start with a C++ implementation, to avoid any overhead from C#. This will allow us to obtain a best-case baseline, which we can then compare against the C# implementations.
+We will be using all of the compiler optimizations available; `-O3 -march=native -mtune=native -flto`, and we will be using the `sqlite3` C API directly, to avoid any overhead from higher-level libraries.
+To further maximize performance, we will use prepared statements and each query will be run in a transaction.
+
 ### Indexes and schema changes
 
+The obvious first step to improving database performance is to add indices to the tables.
+Duplicati already uses indices, so there's not much we can do here.
+However, we can modify the schema to make the database more rigid, allowing for better performance.
+
+Especially, we'll see if we can modify the `Hash` column in the block table, which is currently a `TEXT` column.
+We will investigate the following:
+
+1. The normal `Hash` column as a `TEXT` column, with the index on `(Hash, Size)`.
+2. 1 with the index on `Hash` only, further filtering in userland.
+3. 1 with the index on `Size` only, further filtering in userland.
+4. Change the `Hash` column to a `BLOB` column, which is more efficient for storing binary data. This should improve performance, as this should remove any string overhead. Here the index would be on `(Hash, Size)`.
+5. 4 with the index on `Hash` only, further filtering in userland.
+6. 4 with the index on `Size` only, further filtering in userland.
+7. Change the `Hash` column to a `VARCHAR(64)` column, which is more efficient for storing fixed-length strings. Here the index would be on `(Hash, Size)`.
+8. 7 with the index on `Hash` only, further filtering in userland.
+9. 7 with the index on `Size` only, further filtering in userland.
+10. Change the `Hash` column to be four `INTEGER` columns (`h0`, `h1`, `h2`, `h3`) each storing 64-bit integers. This should allow SQLite to index and compare the values more efficiently. The first index used would be on `(h0, h1, h2, h3, Size)`.
+11. 10 with the index on `(h0, Size)` only, further filtering in userland.
+12. 10 with the index on `h0` only, further filtering in userland.
+13. 10 with the index on `Size` only, further filtering in userland.
+
 ### PRAGMAs
+
+### Parallelization
+
+Transactions becomes deferred to allow for parallel reads without locking the entire database.
 
 ## Backends
 
@@ -176,17 +205,15 @@ UPDATE Blockset SET Length = Length + ? WHERE ID = ?;
 
 ### sqlite3 through PInvoke
 
-### sqlite3 from C++
-
-## Parallelization
-
-Transactions becomes deferred to allow for parallel reads without locking the entire database.
+### Asynchronous Microsoft.Data.Sqlite
 
 # Combining everything
 
 Go with unchanged queries, adding the indices, using prepared statements, Microsoft.Data.Sqlite for asynchronous operations, and finally the PRAGMAs to optimize the database.
 
 Aggregated, we went from X to Y, leading to a Z% speedup.
+
+Show scaling graphs.
 
 # Future work
 
@@ -213,3 +240,5 @@ Changing sqlite (system.data and microsoft) backend did not perform much differe
 Only looking up one of the two columns (e.g. either hash or length) is faster than looking up in a multi-column index.
 
 Depending on the amount of clashes for each column, filtering afterwards can be faster.
+
+TODO reflect against Duplicati; try to correlate the number of blocks to the the size of the data backed up, to relate the performance numbers to how Duplicati would perform (or at least how the database accesses would perform) - hopefully leading to that the database is now not the bottleneck.
