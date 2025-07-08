@@ -203,6 +203,113 @@ int select_index_hash(Config &config)
     return 0;
 }
 
+int select_index_size(Config &config)
+{
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockSize ON Block(Size);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    std::mt19937 rng(2025'07'08);
+    auto insert_begin = std::chrono::high_resolution_clock::now();
+    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    for (uint64_t i = 0; i < config.num_entries; i++)
+    {
+        Entry entry = {
+            i + 1,
+            random_hash(rng, 44),
+            rng() % 1000};
+        entries.push_back(entry);
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        sqlite3_step(stmt);
+        sqlite3_reset(stmt);
+    }
+    sqlite3_finalize(stmt);
+    auto insert_end = std::chrono::high_resolution_clock::now();
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
+    std::cout << "Inserted " << entries.size() << " entries in "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
+              << " ms." << std::endl;
+
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sql = "SELECT ID, Hash FROM Block WHERE Size = ?;";
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+        sqlite3_bind_int64(stmt, 1, entries[idx].size);
+
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            if (entries[idx].hash == std::string((const char *)sqlite3_column_text(stmt, 1)) && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+
+        sqlite3_reset(stmt);
+    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repitions; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+        sqlite3_bind_int64(stmt, 1, entries[idx].size);
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            if (entries[idx].hash == std::string((const char *)sqlite3_column_text(stmt, 1)) && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+        sqlite3_reset(stmt);
+    }
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_close(db);
+
+    report_stats(config, times, "schema1_select_index_size");
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     auto config = parse_args(argc, argv);
@@ -212,6 +319,9 @@ int main(int argc, char *argv[])
     if (ret != 0)
         return ret;
     ret = select_index_hash(config);
+    if (ret != 0)
+        return ret;
+    ret = select_index_size(config);
     if (ret != 0)
         return ret;
 
