@@ -9,7 +9,7 @@ else
 	CXXFLAGS += -march=native
 endif
 
-TARGETS=schema1
+TARGETS=schema1 schema4
 TARGETS := $(addprefix bin/, $(TARGETS))
 
 all: $(TARGETS)

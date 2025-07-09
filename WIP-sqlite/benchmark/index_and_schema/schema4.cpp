@@ -1,0 +1,376 @@
+#include "shared.hpp"
+
+const std::string CREATE_BLOCK_TABLE = "CREATE TABLE Block (ID INTEGER PRIMARY KEY, Hash BLOB NOT NULL, Size INTEGER NOT NULL);";
+
+struct Entry
+{
+    uint64_t id;
+    char *hash;
+    uint64_t size;
+};
+
+int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t num_entries)
+{
+    auto begin = std::chrono::high_resolution_clock::now();
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    for (uint64_t i = 0; i < num_entries; i++)
+    {
+        char *buffer = new char[32];
+        random_hash_bin(rng, 32, buffer);
+        Entry entry = {
+            i + 1,
+            buffer,
+            rng() % 1000};
+        entries.push_back(entry);
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_blob(stmt, 2, entry.hash, 32, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::cout << "Inserted " << entries.size() << " entries in "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " ms." << std::endl;
+
+    return 0;
+}
+
+int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::string &report_name)
+{
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    char *buffer = new char[32];
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        random_hash_bin(rng, 32, buffer);
+        Entry entry = {
+            i + 1 + config.num_entries,
+            buffer,
+            rng() % 1000};
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_blob(stmt, 2, entry.hash, 32, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Warmup insert " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repitions; i++)
+    {
+        random_hash_bin(rng, 32, buffer);
+        Entry entry = {
+            i + 1 + config.num_entries,
+            buffer,
+            rng() % 1000};
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_blob(stmt, 2, entry.hash, 32, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Warmup insert " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    delete[] buffer;
+
+    report_stats(config, times, report_name);
+
+    return 0;
+}
+
+int select_index_normal(Config &config)
+{
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    std::mt19937 rng(2025'07'08);
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+
+    measure_insert(db, config, rng, "schema4_insert_index_normal");
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_blob(stmt, 1, entries[idx].hash, 32, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, entries[idx].size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Warmup query " + std::to_string(i)))
+            return -1;
+        if (!assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check"))
+            return -1;
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repitions; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_blob(stmt, 1, entries[idx].hash, 32, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, entries[idx].size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Query execution " + std::to_string(i)))
+            return -1;
+        if (!assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "ID check"))
+            return -1;
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+    }
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_close(db);
+
+    report_stats(config, times, "schema4_select_index_normal");
+
+    return 0;
+}
+
+int select_index_hash(Config &config)
+{
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockHash ON Block(Hash);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    std::mt19937 rng(2025'07'08);
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+
+    measure_insert(db, config, rng, "schema4_insert_index_hash");
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "SELECT ID, Size FROM Block WHERE Hash = ?;";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_blob(stmt, 1, entries[idx].hash, 32, SQLITE_STATIC);
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            if (entries[idx].size == sqlite3_column_int64(stmt, 1) && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repitions; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_blob(stmt, 1, entries[idx].hash, 32, SQLITE_STATIC);
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            if (entries[idx].size == sqlite3_column_int64(stmt, 1) && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+        sqlite3_reset(stmt);
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+    }
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_close(db);
+
+    report_stats(config, times, "schema4_select_index_hash");
+
+    return 0;
+}
+
+int select_index_size(Config &config)
+{
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockSize ON Block(Size);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    std::mt19937 rng(2025'07'08);
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+
+    measure_insert(db, config, rng, "schema4_insert_index_size");
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "SELECT ID, Hash FROM Block WHERE Size = ?;";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_int64(stmt, 1, entries[idx].size);
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            char *hash = (char *)sqlite3_column_blob(stmt, 1);
+            if (strncmp(hash, entries[idx].hash, 32) == 0 && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        sqlite3_reset(stmt);
+    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repitions; i++)
+    {
+        uint64_t idx = rng() % entries.size();
+
+        auto begin = std::chrono::high_resolution_clock::now();
+
+        sqlite3_bind_int64(stmt, 1, entries[idx].size);
+        bool found = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            char *hash = (char *)sqlite3_column_blob(stmt, 1);
+            if (strncmp(hash, entries[idx].hash, 32) == 0 && assert_value_matches(entries[idx].id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check", false))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            std::cerr << "Warmup ID check failed for hash: " << entries[idx].hash << std::endl;
+            return -1;
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+        sqlite3_reset(stmt);
+    }
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_close(db);
+
+    report_stats(config, times, "schema4_select_index_size");
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    auto config = parse_args(argc, argv);
+
+    int ret;
+    ret = select_index_normal(config);
+    if (ret != 0)
+        return ret;
+    ret = select_index_hash(config);
+    if (ret != 0)
+        return ret;
+    ret = select_index_size(config);
+    if (ret != 0)
+        return ret;
+
+    return 0;
+}
