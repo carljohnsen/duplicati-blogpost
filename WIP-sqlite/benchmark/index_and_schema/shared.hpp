@@ -1,7 +1,9 @@
 #ifndef SHARED_HPP
 #define SHARED_HPP
 
+#include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
