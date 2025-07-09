@@ -22,9 +22,9 @@ const std::string
 
 struct Config
 {
-    uint64_t num_entries = 1'000'000;
+    uint64_t num_entries = 100'000;
     uint64_t num_warmup = 1'000;
-    uint64_t num_repitions = 1000'000;
+    uint64_t num_repitions = 10'000;
 };
 
 bool assert_sqlite_return_code(int rc, sqlite3 *db, const std::string &context)
