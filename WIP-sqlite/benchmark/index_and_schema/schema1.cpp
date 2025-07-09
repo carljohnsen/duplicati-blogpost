@@ -37,7 +37,7 @@ int select_index_normal(Config &config)
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        sqlite3_step(stmt);
+        assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i));
         sqlite3_reset(stmt);
     }
     sqlite3_finalize(stmt);
@@ -124,7 +124,7 @@ int select_index_hash(Config &config)
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        sqlite3_step(stmt);
+        assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i));
         sqlite3_reset(stmt);
     }
     sqlite3_finalize(stmt);
@@ -231,7 +231,7 @@ int select_index_size(Config &config)
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        sqlite3_step(stmt);
+        assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i));
         sqlite3_reset(stmt);
     }
     sqlite3_finalize(stmt);
