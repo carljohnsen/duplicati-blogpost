@@ -21,7 +21,7 @@ int select_index_normal(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
     auto insert_begin = std::chrono::high_resolution_clock::now();
     std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
@@ -49,7 +49,7 @@ int select_index_normal(Config &config)
               << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
               << " ms." << std::endl;
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
 
@@ -66,7 +66,7 @@ int select_index_normal(Config &config)
     }
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
     for (uint64_t i = 0; i < config.num_repitions; i++)
     {
@@ -108,7 +108,7 @@ int select_index_hash(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockHash ON Block(Hash);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
     auto insert_begin = std::chrono::high_resolution_clock::now();
     std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
@@ -136,7 +136,7 @@ int select_index_hash(Config &config)
               << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
               << " ms." << std::endl;
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     sql = "SELECT ID, Size FROM Block WHERE Hash = ?;";
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
 
@@ -164,7 +164,7 @@ int select_index_hash(Config &config)
     }
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
     for (uint64_t i = 0; i < config.num_repitions; i++)
     {
@@ -215,7 +215,7 @@ int select_index_size(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockSize ON Block(Size);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
     auto insert_begin = std::chrono::high_resolution_clock::now();
     std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
@@ -243,7 +243,8 @@ int select_index_size(Config &config)
               << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
               << " ms." << std::endl;
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     sql = "SELECT ID, Hash FROM Block WHERE Size = ?;";
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
 
@@ -271,8 +272,7 @@ int select_index_size(Config &config)
     }
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
-    std::vector<uint64_t> times;
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     for (uint64_t i = 0; i < config.num_repitions; i++)
     {
         uint64_t idx = rng() % entries.size();
