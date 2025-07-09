@@ -20,7 +20,7 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
     {
         Entry entry = {
             i + 1,
-            random_hash(rng, 44),
+            random_hash_string(rng, 44),
             rng() % 1000};
         entries.push_back(entry);
         sqlite3_bind_int64(stmt, 1, entry.id);
@@ -52,7 +52,7 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::st
     {
         Entry entry = {
             i + 1 + config.num_entries,
-            random_hash(rng, 44),
+            random_hash_string(rng, 44),
             rng() % 1000};
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -76,7 +76,7 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::st
     {
         Entry entry = {
             i + 1 + config.num_entries,
-            random_hash(rng, 44),
+            random_hash_string(rng, 44),
             rng() % 1000};
 
         auto begin = std::chrono::high_resolution_clock::now();

@@ -64,13 +64,19 @@ Config parse_args(int argc, char *argv[])
     return config;
 }
 
-std::string random_hash(std::mt19937 &rng, int length)
+std::string random_hash_string(std::mt19937 &rng, int length)
 {
     static const std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     std::string result(length, ' ');
     for (char &c : result)
         c = chars[rng() % chars.size()];
     return result;
+}
+
+void random_hash_bin(std::mt19937 &rng, int length, char *buffer)
+{
+    for (int i = 0; i < length; i++)
+        buffer[i] = rng();
 }
 
 void report_stats(Config &config, std::vector<uint64_t> &times, std::string benchmark_name)
