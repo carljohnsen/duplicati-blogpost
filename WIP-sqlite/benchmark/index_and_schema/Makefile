@@ -15,5 +15,17 @@ TARGETS := $(addprefix bin/, $(TARGETS))
 all: $(TARGETS)
 
 bin/%: %.cpp shared.hpp
-	mkdir -p $(dir $@)
+	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -o $@ $< shared.hpp -lsqlite3
+
+clean:
+	rm -rf bin reports benchmark.sqlite
+
+.PHONY: all clean
+
+run: $(TARGETS)
+	@echo "Running benchmarks..."
+	@for target in $(TARGETS); do \
+		echo "Running $$target..."; \
+		./$$target; \
+	done
