@@ -495,5 +495,8 @@ int main(int argc, char *argv[])
     if (ret != 0)
         return ret;
 
+    if (std::filesystem::exists(DBPATH))
+        std::filesystem::remove(DBPATH);
+
     return 0;
 }
