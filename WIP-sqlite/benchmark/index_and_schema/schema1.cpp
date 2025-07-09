@@ -9,6 +9,39 @@ struct Entry
     uint64_t size;
 };
 
+int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t num_entries)
+{
+    auto begin = std::chrono::high_resolution_clock::now();
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    for (uint64_t i = 0; i < num_entries; i++)
+    {
+        Entry entry = {
+            i + 1,
+            random_hash(rng, 44),
+            rng() % 1000};
+        entries.push_back(entry);
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::cout << "Inserted " << entries.size() << " entries in "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " ms." << std::endl;
+
+    return 0;
+}
+
 int select_index_normal(Config &config)
 {
     std::vector<std::string> table_queries = {
@@ -21,36 +54,13 @@ int select_index_normal(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
-    auto insert_begin = std::chrono::high_resolution_clock::now();
-    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
-    sqlite3_stmt *stmt;
-    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    for (uint64_t i = 0; i < config.num_entries; i++)
-    {
-        Entry entry = {
-            i + 1,
-            random_hash(rng, 44),
-            rng() % 1000};
-        entries.push_back(entry);
-        sqlite3_bind_int64(stmt, 1, entry.id);
-        sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 3, entry.size);
-        assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i));
-        sqlite3_reset(stmt);
-    }
-    sqlite3_finalize(stmt);
-    auto insert_end = std::chrono::high_resolution_clock::now();
-
-    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
-    std::cout << "Inserted " << entries.size() << " entries in "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
-              << " ms." << std::endl;
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
+    std::string sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
+    sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
 
     for (uint64_t i = 0; i < config.num_warmup; i++)
@@ -113,36 +123,13 @@ int select_index_hash(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockHash ON Block(Hash);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
-    auto insert_begin = std::chrono::high_resolution_clock::now();
-    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
-    sqlite3_stmt *stmt;
-    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    for (uint64_t i = 0; i < config.num_entries; i++)
-    {
-        Entry entry = {
-            i + 1,
-            random_hash(rng, 44),
-            rng() % 1000};
-        entries.push_back(entry);
-        sqlite3_bind_int64(stmt, 1, entry.id);
-        sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 3, entry.size);
-        assert_sqlite_return_code(sqlite3_step(stmt), db, "Insert entry " + std::to_string(i));
-        sqlite3_reset(stmt);
-    }
-    sqlite3_finalize(stmt);
-    auto insert_end = std::chrono::high_resolution_clock::now();
-
-    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
-    std::cout << "Inserted " << entries.size() << " entries in "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(insert_end - insert_begin).count()
-              << " ms." << std::endl;
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    sql = "SELECT ID, Size FROM Block WHERE Hash = ?;";
+    std::string sql = "SELECT ID, Size FROM Block WHERE Hash = ?;";
+    sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
 
     for (uint64_t i = 0; i < config.num_warmup; i++)
@@ -223,9 +210,11 @@ int select_index_size(Config &config)
     sqlite3_exec(db, "CREATE INDEX BlockSize ON Block(Size);", nullptr, nullptr, nullptr);
 
     std::vector<Entry> entries;
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::mt19937 rng(2025'07'08);
-    auto insert_begin = std::chrono::high_resolution_clock::now();
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
