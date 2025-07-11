@@ -86,14 +86,14 @@ int measure(
     std::mt19937 &rng,
     const std::function<int(sqlite3 *, const Entry &, uint64_t, const std::string &)> &f,
     const std::string &report_name,
-    const bool create_entry,
+    const int create_entry, // Percentage probability of creating a new entry
     const std::vector<Entry> &entries)
 {
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     for (uint64_t i = 0; i < config.num_warmup; i++)
     {
         Entry entry;
-        if (create_entry)
+        if ((rng() % 100) >= (100 - create_entry))
         {
             entry = {
                 i + 1 + config.num_entries,
@@ -119,7 +119,7 @@ int measure(
     for (uint64_t i = 0; i < config.num_repitions; i++)
     {
         Entry entry;
-        if (create_entry)
+        if ((rng() % 100) >= (100 - create_entry))
         {
             entry = {
                 i + 1 + config.num_entries,
@@ -166,7 +166,7 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
         return 0;
     };
 
-    if (measure(db, config, rng, insert_inner, report_name, true, entries) != 0)
+    if (measure(db, config, rng, insert_inner, report_name, 100, entries) != 0)
         return -1;
 
     sqlite3_finalize(stmt);
@@ -194,7 +194,7 @@ int measure_select(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
         return 0;
     };
 
-    if (measure(db, config, rng, select_inner, report_name, false, entries) != 0)
+    if (measure(db, config, rng, select_inner, report_name, 0, entries) != 0)
         return -1;
 
     sqlite3_finalize(stmt);
