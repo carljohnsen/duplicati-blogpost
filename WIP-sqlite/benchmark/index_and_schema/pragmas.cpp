@@ -202,32 +202,52 @@ int measure_select(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
     return 0;
 }
 
-int measure_xor(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
+int measure_xor1(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
 {
-    std::string sql = "SELECT ID FROM Block WHERE (Hash = ? AND Size = ?) XOR (Hash = ? AND Size = ?);";
-    sqlite3_stmt *stmt;
-    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare XOR select statement"))
+    std::string
+        sql_select = "SELECT ID FROM Block WHERE (Hash = ? AND Size = ?);",
+        sql_insert = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt_select, *stmt_insert;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare XOR select statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert.c_str(), -1, &stmt_insert, nullptr), db, "Prepare XOR insert statement"))
         return -1;
 
     auto xor_inner = [=](sqlite3 *db, const Entry &entry, uint64_t i, const std::string &prefix) -> int
     {
-        std::cout << sql;
-        sqlite3_bind_text(stmt, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 2, entry.size);
-        sqlite3_bind_text(stmt, 3, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 4, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, prefix + " query execution " + std::to_string(i)))
+        sqlite3_bind_text(stmt_select, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_select, 2, entry.size);
+        sqlite3_bind_text(stmt_select, 3, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_select, 4, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_select), db, prefix + " query execution " + std::to_string(i)))
             return -1;
-        if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt, 0), prefix + " ID check"))
-            return -1;
-        sqlite3_reset(stmt);
+        auto found_id = sqlite3_column_int64(stmt_select, 0);
+        sqlite3_reset(stmt_select);
+
+        if (found_id == 0)
+        {
+            // Not found, insert
+            sqlite3_bind_int64(stmt_insert, 1, entry.id);
+            sqlite3_bind_text(stmt_insert, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+            sqlite3_bind_int64(stmt_insert, 3, entry.size);
+            if (!assert_sqlite_return_code(sqlite3_step(stmt_insert), db, prefix + " xor insert " + std::to_string(i)))
+                return -1;
+            sqlite3_reset(stmt_insert);
+        }
+        else
+        {
+            if (!assert_value_matches(entry.id, (uint64_t)found_id, prefix + " ID check"))
+                return -1;
+        }
+
         return 0;
     };
 
-    if (measure(db, config, rng, xor_inner, report_name, false, entries) != 0)
+    if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
         return -1;
 
-    sqlite3_finalize(stmt);
+    sqlite3_finalize(stmt_select);
+    sqlite3_finalize(stmt_insert);
 
     return 0;
 }
@@ -258,6 +278,8 @@ int measure_all(Config &config, std::string &report_name, std::vector<std::strin
     measure_insert(db, config, rng, entries, "pragmas_insert_" + report_name);
 
     measure_select(db, config, rng, entries, "pragmas_select_" + report_name);
+
+    measure_xor1(db, config, rng, entries, "pragmas_xor_" + report_name);
 
     sqlite3_close(db);
 
@@ -304,7 +326,8 @@ int main(int argc, char *argv[])
         //{"threads_4", {"PRAGMA threads = 4;"}},
         //{"threads_8", {"PRAGMA threads = 8;"}},
         //{"threads_16", {"PRAGMA threads = 16;"}},
-        {"threads_32", {"PRAGMA threads = 32;"}}};
+        //{"threads_32", {"PRAGMA threads = 32;"}}
+    };
 
     for (auto &[report_name, pragmas] : pragmas_to_run)
     {
