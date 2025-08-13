@@ -8,6 +8,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <sqlite3.h>
 #include <stdint.h>
