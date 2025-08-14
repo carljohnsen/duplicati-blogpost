@@ -446,7 +446,7 @@ int main(int argc, char *argv[])
     auto config = parse_args(argc, argv);
 
     std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
-        {"normal", {}},
+        //{"normal", {}},
         //{"synch_off", {"PRAGMA synchronous = OFF;"}},
         //{"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
         //{"synch_full", {"PRAGMA synchronous = FULL;"}},
@@ -481,7 +481,9 @@ int main(int argc, char *argv[])
         //{"threads_4", {"PRAGMA threads = 4;"}},
         //{"threads_8", {"PRAGMA threads = 8;"}},
         //{"threads_16", {"PRAGMA threads = 16;"}},
-        //{"threads_32", {"PRAGMA threads = 32;"}}
+        //{"threads_32", {"PRAGMA threads = 32;"}},
+        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        //
     };
 
     for (auto &[report_name, pragmas] : pragmas_to_run)
