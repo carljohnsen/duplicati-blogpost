@@ -146,7 +146,7 @@ int measure(
 
         auto begin = std::chrono::high_resolution_clock::now();
 
-        if (f(db, entry, i, "Warmup") != 0)
+        if (f(db, entry, i, "Actual") != 0)
             return -1;
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -351,6 +351,8 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         if (!assert_value_matches(expected_count, count, "Blockset count check"))
             return -1;
         sqlite3_reset(stmt);
+
+        return 0;
     };
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
@@ -384,6 +386,167 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
     sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt);
+
+    report_stats(config, times, report_name);
+
+    return 0;
+}
+
+int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
+{
+    std::string
+        sql_start_blockset = "INSERT INTO Blockset (Length) VALUES (0);",
+        sql_last_row = "SELECT last_insert_rowid();",
+        sql_check_block = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;",
+        sql_insert_block = "INSERT INTO Block (Hash, Size) VALUES (?, ?);",
+        sql_insert_blockset_entry = "INSERT INTO BlocksetEntry (BlocksetID, BlockID) VALUES (?, ?);",
+        sql_update_blockset = "UPDATE Blockset SET Length = Length + 1 WHERE ID = ?;";
+    sqlite3_stmt *stmt_start_blockset, *stmt_last_row, *stmt_check_block, *stmt_insert_block, *stmt_insert_blockset_entry, *stmt_update_blockset;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_start_blockset.c_str(), -1, &stmt_start_blockset, nullptr), db, "Prepare start blockset statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_last_row.c_str(), -1, &stmt_last_row, nullptr), db, "Prepare last row statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_check_block.c_str(), -1, &stmt_check_block, nullptr), db, "Prepare check block statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert_block.c_str(), -1, &stmt_insert_block, nullptr), db, "Prepare insert block statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert_blockset_entry.c_str(), -1, &stmt_insert_blockset_entry, nullptr), db, "Prepare insert blockset entry statement"))
+        return -1;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_update_blockset.c_str(), -1, &stmt_update_blockset, nullptr), db, "Prepare update blockset statement"))
+        return -1;
+
+    auto add_to_blockset_inner = [=](sqlite3 *db, Entry entry, const std::string &prefix) -> int
+    {
+        // Check if the block exists
+        sqlite3_bind_text(stmt_check_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_check_block, 2, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_check_block), db, prefix + " check block"))
+            return -1;
+        uint64_t id = sqlite3_column_int64(stmt_check_block, 0);
+        sqlite3_reset(stmt_check_block);
+
+        if (id == -1)
+        {
+            // Block does not exist, insert it
+            sqlite3_bind_text(stmt_insert_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+            sqlite3_bind_int64(stmt_insert_block, 2, entry.size);
+            if (!assert_sqlite_return_code(sqlite3_step(stmt_insert_block), db, prefix + " insert block"))
+                return -1;
+            sqlite3_reset(stmt_insert_block);
+            // Get the last inserted row ID
+            if (!assert_sqlite_return_code(sqlite3_step(stmt_last_row), db, prefix + " get last row ID"))
+                return -1;
+            id = sqlite3_column_int64(stmt_last_row, 0);
+            sqlite3_reset(stmt_last_row);
+        }
+
+        // Insert the blockset entry
+        sqlite3_bind_int64(stmt_insert_blockset_entry, 1, entry.blockset_id);
+        sqlite3_bind_int64(stmt_insert_blockset_entry, 2, id);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_insert_blockset_entry), db, prefix + " insert blockset entry"))
+            return -1;
+        sqlite3_reset(stmt_insert_blockset_entry);
+
+        // Increment the blockset
+        sqlite3_bind_int64(stmt_update_blockset, 1, entry.blockset_id);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_update_blockset), db, prefix + " update blockset"))
+            return -1;
+        sqlite3_reset(stmt_update_blockset);
+
+        return 0;
+    };
+
+    auto start_new_blockset = [=](sqlite3 *db, uint64_t *blockset_id) -> int
+    {
+        // Start a new blockset
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_start_blockset), db, "Warmup insert blockset"))
+            return -1;
+        sqlite3_reset(stmt_start_blockset);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_last_row), db, "Warmup get last row ID"))
+            return -1;
+        *blockset_id = sqlite3_column_int64(stmt_last_row, 0);
+        sqlite3_reset(stmt_last_row);
+
+        return 0;
+    };
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    uint64_t blockset_id = 0;
+    if (start_new_blockset(db, &blockset_id) != 0)
+        return -1;
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        Entry entry;
+        if ((rng() % 100) >= (100 - 50)) // 50% chance to create a new entry
+        {
+            entry = {
+                config.num_entries + i,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                blockset_id};
+        }
+        else
+        {
+            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        if (add_to_blockset_inner(db, entry, "Warmup") != 0)
+            return -1;
+
+        // With some probability, create a new blockset
+        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        {
+            if (start_new_blockset(db, &blockset_id) != 0)
+                return -1;
+        }
+    }
+
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    std::vector<uint64_t> times;
+    if (start_new_blockset(db, &blockset_id) != 0)
+        return -1;
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
+    {
+        Entry entry;
+        if ((rng() % 100) >= (100 - 50)) // 50% chance to create a new entry
+        {
+            entry = {
+                config.num_entries + i,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                blockset_id};
+        }
+        else
+        {
+            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        auto begin = std::chrono::high_resolution_clock::now();
+        if (add_to_blockset_inner(db, entry, "Actual") != 0)
+            return -1;
+        auto end = std::chrono::high_resolution_clock::now();
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+
+        // With some probability, create a new blockset
+        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        {
+            if (start_new_blockset(db, &blockset_id) != 0)
+                return -1;
+        }
+    }
+
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt_start_blockset);
+    sqlite3_finalize(stmt_last_row);
+    sqlite3_finalize(stmt_check_block);
+    sqlite3_finalize(stmt_insert_block);
+    sqlite3_finalize(stmt_insert_blockset_entry);
+    sqlite3_finalize(stmt_update_blockset);
 
     report_stats(config, times, report_name);
 
@@ -426,6 +589,9 @@ int measure_all(Config &config, std::string &report_name, std::vector<std::strin
         return -1;
 
     if (measure_join(db, config, rng, entries, "pragmas_join_" + report_name) != 0)
+        return -1;
+
+    if (measure_new_blockset(db, config, rng, entries, "pragmas_blockset_" + report_name) != 0)
         return -1;
 
     sqlite3_close(db);
