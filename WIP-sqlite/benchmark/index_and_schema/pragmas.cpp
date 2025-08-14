@@ -7,6 +7,7 @@ struct Entry
     uint64_t id;
     std::string hash;
     uint64_t size;
+    uint64_t blockset_id;
 };
 
 int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t num_entries)
@@ -33,7 +34,8 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
         Entry entry = {
             i,
             random_hash_string(rng, 44),
-            rng() % 1000};
+            rng() % 1000,
+            blockset_id};
         entries.push_back(entry);
         sqlite3_bind_int64(stmt_block, 1, entry.id);
         sqlite3_bind_text(stmt_block, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
@@ -53,7 +55,6 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
         // Blockset
         if (rng() % 1000 > 995) // 0.5% chance to create a new Blockset
         {
-            blockset_count++;
             sqlite3_bind_int64(stmt_blockset, 1, blockset_id);
             sqlite3_bind_int64(stmt_blockset, 2, blockset_count);
             if (!assert_sqlite_return_code(sqlite3_step(stmt_blockset), db, "Insert Blockset for entry " + std::to_string(i)))
@@ -62,6 +63,16 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
             blockset_id++;
             blockset_count = 0; // Reset count for the next Blockset
         }
+    }
+
+    // Finish the current blockset, if it has blocksetentries.
+    if (blockset_count > 0)
+    {
+        sqlite3_bind_int64(stmt_blockset, 1, blockset_id);
+        sqlite3_bind_int64(stmt_blockset, 2, blockset_count);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_blockset), db, "Insert Blockset for entry " + std::to_string(blockset_id)))
+            return -1;
+        sqlite3_reset(stmt_blockset);
     }
 
     sqlite3_finalize(stmt_block);
@@ -292,6 +303,101 @@ int measure_xor2(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
     return 0;
 }
 
+uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
+{
+    uint64_t count = 0;
+    for (const auto &entry : entries)
+    {
+        if (entry.blockset_id == blockset_id)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
+{
+    std::string sql = "SELECT Block.ID, Block.Hash, Block.Size FROM Block JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID WHERE BlocksetEntry.BlocksetID = ?;";
+    sqlite3_stmt *stmt;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare join statement"))
+        return -1;
+
+    uint64_t max_blockset = 0;
+    for (auto &entry : entries)
+    {
+        max_blockset = std::max(max_blockset, entry.blockset_id);
+    }
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t blockset_id = (rng() % max_blockset) + 1;
+        sqlite3_bind_int64(stmt, 1, blockset_id);
+        uint64_t count = 0;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            // Process the row
+            auto found_id = sqlite3_column_int64(stmt, 0);
+            auto found_hash = std::string((const char *)sqlite3_column_text(stmt, 1));
+            auto found_size = (uint64_t)sqlite3_column_int64(stmt, 2);
+            auto entry = entries[found_id];
+            if (!assert_value_matches(entry.hash, found_hash, "Hash check"))
+                return -1;
+            if (!assert_value_matches(entry.size, found_size, "Size check"))
+                return -1;
+            if (!assert_value_matches(entry.blockset_id, blockset_id, "Blockset ID check"))
+                return -1;
+            count++;
+        }
+        sqlite3_reset(stmt);
+        if (!assert_value_matches(blockset_count(blockset_id, entries), count, "Blockset count check"))
+            return -1;
+    }
+
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    std::vector<uint64_t> times;
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
+    {
+        uint64_t blockset_id = (rng() % max_blockset) + 1;
+        auto begin = std::chrono::high_resolution_clock::now();
+        sqlite3_bind_int64(stmt, 1, blockset_id);
+        uint64_t count = 0;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            // Process the row
+            auto found_id = sqlite3_column_int64(stmt, 0);
+            auto found_hash = std::string((const char *)sqlite3_column_text(stmt, 1));
+            auto found_size = (uint64_t)sqlite3_column_int64(stmt, 2);
+            auto entry = entries[found_id];
+            if (!assert_value_matches(entry.hash, found_hash, "Hash check"))
+                return -1;
+            if (!assert_value_matches(entry.size, found_size, "Size check"))
+                return -1;
+            if (!assert_value_matches(entry.blockset_id, blockset_id, "Blockset ID check"))
+                return -1;
+            count++;
+        }
+        sqlite3_reset(stmt);
+        auto end = std::chrono::high_resolution_clock::now();
+        if (!assert_value_matches(blockset_count(blockset_id, entries), count, "Blockset count check"))
+            return -1;
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / count);
+    }
+
+    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt);
+
+    report_stats(config, times, report_name);
+
+    return 0;
+}
+
 int measure_all(Config &config, std::string &report_name, std::vector<std::string> &pragmas)
 {
     std::vector<std::string> table_queries = {
@@ -325,6 +431,9 @@ int measure_all(Config &config, std::string &report_name, std::vector<std::strin
         return -1;
 
     if (measure_xor2(db, config, rng, entries, "pragmas_xor2_" + report_name) != 0)
+        return -1;
+
+    if (measure_join(db, config, rng, entries, "pragmas_join_" + report_name) != 0)
         return -1;
 
     sqlite3_close(db);
