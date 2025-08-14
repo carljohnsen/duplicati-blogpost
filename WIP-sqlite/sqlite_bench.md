@@ -133,7 +133,7 @@ If it does not exist, we insert it:
 
 ```sql
 INSERT INTO Block (Hash, Size) VALUES (?, ?);
-SELECT last_insert_rowid() AS ID;
+SELECT last_insert_rowid();
 ```
 
 Link up the rows through the `BlocksetEntry` table:
