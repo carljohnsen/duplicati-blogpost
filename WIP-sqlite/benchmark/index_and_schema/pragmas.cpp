@@ -110,7 +110,8 @@ int measure(
             entry = {
                 next_id++,
                 random_hash_string(rng, 44),
-                rng() % 1000};
+                rng() % 1000,
+                0};
         }
         else
         {
@@ -137,7 +138,8 @@ int measure(
             entry = {
                 next_id++,
                 random_hash_string(rng, 44),
-                rng() % 1000};
+                rng() % 1000,
+                0};
         }
         else
         {
@@ -231,7 +233,7 @@ int measure_xor1(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         sqlite3_bind_text(stmt_select, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt_select, 2, entry.size);
         auto rc = sqlite3_step(stmt_select);
-        if (!assert_sqlite_return_code(rc, db, prefix + " xor query execution " + std::to_string(i)))
+        if (!assert_sqlite_return_code(rc, db, prefix + " xor1 query execution " + std::to_string(i)))
             return -1;
         auto found_id = rc == SQLITE_ROW ? sqlite3_column_int64(stmt_select, 0) : -1;
         sqlite3_reset(stmt_select);
@@ -242,13 +244,13 @@ int measure_xor1(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
             sqlite3_bind_int64(stmt_insert, 1, entry.id);
             sqlite3_bind_text(stmt_insert, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
             sqlite3_bind_int64(stmt_insert, 3, entry.size);
-            if (!assert_sqlite_return_code(sqlite3_step(stmt_insert), db, prefix + " xor insert " + std::to_string(i)))
+            if (!assert_sqlite_return_code(sqlite3_step(stmt_insert), db, prefix + " xor1 insert " + std::to_string(i)))
                 return -1;
             sqlite3_reset(stmt_insert);
         }
         else
         {
-            if (!assert_value_matches(entry.id, (uint64_t)found_id, prefix + " xor ID check"))
+            if (!assert_value_matches(entry.id, (uint64_t)found_id, prefix + " xor1 ID check"))
                 return -1;
         }
 
@@ -420,12 +422,13 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         // Check if the block exists
         sqlite3_bind_text(stmt_check_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt_check_block, 2, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt_check_block), db, prefix + " check block"))
+        auto rc = sqlite3_step(stmt_check_block);
+        if (!assert_sqlite_return_code(rc, db, prefix + " check block"))
             return -1;
-        uint64_t id = sqlite3_column_int64(stmt_check_block, 0);
+        uint64_t found_id = rc == SQLITE_ROW ? sqlite3_column_int64(stmt_check_block, 0) : -1;
         sqlite3_reset(stmt_check_block);
 
-        if (id == -1)
+        if (found_id == -1)
         {
             // Block does not exist, insert it
             sqlite3_bind_text(stmt_insert_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
@@ -436,13 +439,13 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
             // Get the last inserted row ID
             if (!assert_sqlite_return_code(sqlite3_step(stmt_last_row), db, prefix + " get last row ID"))
                 return -1;
-            id = sqlite3_column_int64(stmt_last_row, 0);
+            found_id = sqlite3_column_int64(stmt_last_row, 0);
             sqlite3_reset(stmt_last_row);
         }
 
         // Insert the blockset entry
         sqlite3_bind_int64(stmt_insert_blockset_entry, 1, entry.blockset_id);
-        sqlite3_bind_int64(stmt_insert_blockset_entry, 2, id);
+        sqlite3_bind_int64(stmt_insert_blockset_entry, 2, found_id);
         if (!assert_sqlite_return_code(sqlite3_step(stmt_insert_blockset_entry), db, prefix + " insert blockset entry"))
             return -1;
         sqlite3_reset(stmt_insert_blockset_entry);
@@ -553,23 +556,10 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
     return 0;
 }
 
-int measure_all(Config &config, std::string &report_name, std::vector<std::string> &pragmas)
+int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas, std::mt19937 &rng)
 {
-    std::vector<std::string> table_queries = {
-        CREATE_BLOCKSET_TABLE,
-        CREATE_BLOCKSETENTRY_TABLE,
-        CREATE_BLOCK_TABLE};
-
-    auto db = setup_database(table_queries);
-
-    sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
-    sqlite3_exec(db, "CREATE INDEX BlocksetEntryBlocksetID ON BlocksetEntry(BlocksetID);", nullptr, nullptr, nullptr);
-    sqlite3_exec(db, "CREATE INDEX BlocksetBlocksetID ON Blockset(ID);", nullptr, nullptr, nullptr);
-
-    std::vector<Entry> entries;
-    std::mt19937 rng(2025'07'08);
-    if (fill(db, rng, entries, config.num_entries) != 0)
-        return -1;
+    sqlite3 *db;
+    sqlite3_open(DBPATH.c_str(), &db);
 
     for (const auto &pragma : pragmas)
     {
@@ -604,7 +594,7 @@ int main(int argc, char *argv[])
     auto config = parse_args(argc, argv);
 
     std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
-        //{"normal", {}},
+        {"normal", {}},
         //{"synch_off", {"PRAGMA synchronous = OFF;"}},
         //{"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
         //{"synch_full", {"PRAGMA synchronous = FULL;"}},
@@ -640,14 +630,30 @@ int main(int argc, char *argv[])
         //{"threads_8", {"PRAGMA threads = 8;"}},
         //{"threads_16", {"PRAGMA threads = 16;"}},
         //{"threads_32", {"PRAGMA threads = 32;"}},
-        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
         //
     };
 
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX BlocksetEntryBlocksetID ON BlocksetEntry(BlocksetID);", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX BlocksetBlocksetID ON Blockset(ID);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    std::mt19937 rng(2025'07'08);
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+    sqlite3_close(db);
+
     for (auto &[report_name, pragmas] : pragmas_to_run)
     {
-        int ret;
-        ret = measure_all(config, report_name, pragmas);
+        int ret = measure_all(entries, config, report_name, pragmas, rng);
         if (ret != 0)
             return ret;
     }
