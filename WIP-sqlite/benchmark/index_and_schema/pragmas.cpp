@@ -556,10 +556,11 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
     return 0;
 }
 
-int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas, std::mt19937 &rng)
+int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas)
 {
     sqlite3 *db;
     sqlite3_open(DBPATH.c_str(), &db);
+    std::mt19937 rng(~2025'07'08);
 
     for (const auto &pragma : pragmas)
     {
@@ -595,42 +596,42 @@ int main(int argc, char *argv[])
 
     std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
         {"normal", {}},
-        //{"synch_off", {"PRAGMA synchronous = OFF;"}},
-        //{"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
-        //{"synch_full", {"PRAGMA synchronous = FULL;"}},
-        //{"synch_extra", {"PRAGMA synchronous = EXTRA;"}},
-        //{"temp_store_memory", {"PRAGMA temp_store = MEMORY;"}},
-        //{"temp_store_default", {"PRAGMA temp_store = DEFAULT;"}},
-        //{"journal_delete", {"PRAGMA journal_mode = DELETE;"}},
-        //{"journal_memory", {"PRAGMA journal_mode = MEMORY;"}},
-        //{"journal_wal", {"PRAGMA journal_mode = WAL;"}},
-        //{"journal_off", {"PRAGMA journal_mode = OFF;"}},
-        //{"cache_size_2M", {"PRAGMA cache_size = -2000;"}},
-        //{"cache_size_4M", {"PRAGMA cache_size = -4000;"}},
-        //{"cache_size_8M", {"PRAGMA cache_size = -8000;"}},
-        //{"cache_size_16M", {"PRAGMA cache_size = -16000;"}},
-        //{"cache_size_32M", {"PRAGMA cache_size = -32000;"}},
-        //{"cache_size_64M", {"PRAGMA cache_size = -64000;"}},
-        //{"cache_size_128M", {"PRAGMA cache_size = -128000;"}},
-        //{"cache_size_256M", {"PRAGMA cache_size = -256000;"}},
-        //{"cache_size_512M", {"PRAGMA cache_size = -512000;"}},
-        //{"mmap_size_2M", {"PRAGMA mmap_size = 2000000;"}},
-        //{"mmap_size_4M", {"PRAGMA mmap_size = 4000000;"}},
-        //{"mmap_size_8M", {"PRAGMA mmap_size = 8000000;"}},
-        //{"mmap_size_16M", {"PRAGMA mmap_size = 16000000;"}},
-        //{"mmap_size_32M", {"PRAGMA mmap_size = 32000000;"}},
-        //{"mmap_size_64M", {"PRAGMA mmap_size = 64000000;"}},
-        //{"mmap_size_128M", {"PRAGMA mmap_size = 128000000;"}},
-        //{"mmap_size_256M", {"PRAGMA mmap_size = 256000000;"}},
-        //{"mmap_size_512M", {"PRAGMA mmap_size = 512000000;"}},
-        //{"threads_0", {"PRAGMA threads = 0;"}},
-        //{"threads_1", {"PRAGMA threads = 1;"}},
-        //{"threads_2", {"PRAGMA threads = 2;"}},
-        //{"threads_4", {"PRAGMA threads = 4;"}},
-        //{"threads_8", {"PRAGMA threads = 8;"}},
-        //{"threads_16", {"PRAGMA threads = 16;"}},
-        //{"threads_32", {"PRAGMA threads = 32;"}},
-        //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        // {"synch_off", {"PRAGMA synchronous = OFF;"}},
+        // {"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
+        // {"synch_full", {"PRAGMA synchronous = FULL;"}},
+        // {"synch_extra", {"PRAGMA synchronous = EXTRA;"}},
+        // {"temp_store_memory", {"PRAGMA temp_store = MEMORY;"}},
+        // {"temp_store_default", {"PRAGMA temp_store = DEFAULT;"}},
+        // {"journal_delete", {"PRAGMA journal_mode = DELETE;"}},
+        // {"journal_memory", {"PRAGMA journal_mode = MEMORY;"}},
+        // {"journal_wal", {"PRAGMA journal_mode = WAL;"}},
+        // {"journal_off", {"PRAGMA journal_mode = OFF;"}},
+        // {"cache_size_2M", {"PRAGMA cache_size = -2000;"}},
+        // {"cache_size_4M", {"PRAGMA cache_size = -4000;"}},
+        // {"cache_size_8M", {"PRAGMA cache_size = -8000;"}},
+        // {"cache_size_16M", {"PRAGMA cache_size = -16000;"}},
+        // {"cache_size_32M", {"PRAGMA cache_size = -32000;"}},
+        // {"cache_size_64M", {"PRAGMA cache_size = -64000;"}},
+        // {"cache_size_128M", {"PRAGMA cache_size = -128000;"}},
+        // {"cache_size_256M", {"PRAGMA cache_size = -256000;"}},
+        // {"cache_size_512M", {"PRAGMA cache_size = -512000;"}},
+        // {"mmap_size_2M", {"PRAGMA mmap_size = 2000000;"}},
+        // {"mmap_size_4M", {"PRAGMA mmap_size = 4000000;"}},
+        // {"mmap_size_8M", {"PRAGMA mmap_size = 8000000;"}},
+        // {"mmap_size_16M", {"PRAGMA mmap_size = 16000000;"}},
+        // {"mmap_size_32M", {"PRAGMA mmap_size = 32000000;"}},
+        // {"mmap_size_64M", {"PRAGMA mmap_size = 64000000;"}},
+        // {"mmap_size_128M", {"PRAGMA mmap_size = 128000000;"}},
+        // {"mmap_size_256M", {"PRAGMA mmap_size = 256000000;"}},
+        // {"mmap_size_512M", {"PRAGMA mmap_size = 512000000;"}},
+        // {"threads_0", {"PRAGMA threads = 0;"}},
+        // {"threads_1", {"PRAGMA threads = 1;"}},
+        // {"threads_2", {"PRAGMA threads = 2;"}},
+        // {"threads_4", {"PRAGMA threads = 4;"}},
+        // {"threads_8", {"PRAGMA threads = 8;"}},
+        // {"threads_16", {"PRAGMA threads = 16;"}},
+        // {"threads_32", {"PRAGMA threads = 32;"}},
+        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
         //
     };
 
@@ -653,7 +654,7 @@ int main(int argc, char *argv[])
 
     for (auto &[report_name, pragmas] : pragmas_to_run)
     {
-        int ret = measure_all(entries, config, report_name, pragmas, rng);
+        int ret = measure_all(entries, config, report_name, pragmas);
         if (ret != 0)
             return ret;
     }
