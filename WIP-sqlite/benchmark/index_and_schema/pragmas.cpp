@@ -329,11 +329,8 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         max_blockset = std::max(max_blockset, entry.blockset_id);
     }
 
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
-    for (uint64_t i = 0; i < config.num_warmup; i++)
+    auto join_inner = [=](sqlite3 *db, uint64_t blockset_id, uint64_t expected_count, const std::string &prefix) -> int
     {
-        uint64_t blockset_id = (rng() % max_blockset) + 1;
         sqlite3_bind_int64(stmt, 1, blockset_id);
         uint64_t count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW)
@@ -351,8 +348,18 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
                 return -1;
             count++;
         }
+        if (!assert_value_matches(expected_count, count, "Blockset count check"))
+            return -1;
         sqlite3_reset(stmt);
-        if (!assert_value_matches(blockset_count(blockset_id, entries), count, "Blockset count check"))
+    };
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    for (uint64_t i = 0; i < config.num_warmup; i++)
+    {
+        uint64_t blockset_id = (rng() % max_blockset) + 1;
+        uint64_t expected_count = blockset_count(blockset_id, entries);
+        if (join_inner(db, blockset_id, expected_count, "Warmup") != 0)
             return -1;
     }
 
@@ -364,29 +371,14 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
     for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         uint64_t blockset_id = (rng() % max_blockset) + 1;
+        uint64_t expected_count = blockset_count(blockset_id, entries);
+
         auto begin = std::chrono::high_resolution_clock::now();
-        sqlite3_bind_int64(stmt, 1, blockset_id);
-        uint64_t count = 0;
-        while (sqlite3_step(stmt) == SQLITE_ROW)
-        {
-            // Process the row
-            auto found_id = sqlite3_column_int64(stmt, 0);
-            auto found_hash = std::string((const char *)sqlite3_column_text(stmt, 1));
-            auto found_size = (uint64_t)sqlite3_column_int64(stmt, 2);
-            auto entry = entries[found_id];
-            if (!assert_value_matches(entry.hash, found_hash, "Hash check"))
-                return -1;
-            if (!assert_value_matches(entry.size, found_size, "Size check"))
-                return -1;
-            if (!assert_value_matches(entry.blockset_id, blockset_id, "Blockset ID check"))
-                return -1;
-            count++;
-        }
-        sqlite3_reset(stmt);
-        auto end = std::chrono::high_resolution_clock::now();
-        if (!assert_value_matches(blockset_count(blockset_id, entries), count, "Blockset count check"))
+        if (join_inner(db, blockset_id, expected_count, "Actual") != 0)
             return -1;
-        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / count);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / expected_count);
     }
 
     sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
