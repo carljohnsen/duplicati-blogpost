@@ -129,7 +129,7 @@ int measure(
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
     next_id = config.num_entries;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         Entry entry;
         if ((rng() % 100) >= (100 - create_entry))

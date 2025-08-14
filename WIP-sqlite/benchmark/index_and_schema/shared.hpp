@@ -26,7 +26,7 @@ struct Config
 {
     uint64_t num_entries = 100'000;
     uint64_t num_warmup = 1'000;
-    uint64_t num_repitions = 10'000;
+    uint64_t num_repetitions = 10'000;
 };
 
 bool assert_sqlite_return_code(int rc, sqlite3 *db, const std::string &context)
@@ -61,7 +61,7 @@ Config parse_args(int argc, char *argv[])
         else if (std::string(argv[i]) == "--num-warmup" && i + 1 < argc)
             config.num_warmup = std::stoi(argv[++i]);
         else if (std::string(argv[i]) == "--num-repitions" && i + 1 < argc)
-            config.num_repitions = std::stoi(argv[++i]);
+            config.num_repetitions = std::stoi(argv[++i]);
         else
             std::cerr << "Unknown argument: " << argv[i] << std::endl;
     }
@@ -92,7 +92,7 @@ void report_stats(Config &config, std::vector<uint64_t> &times, std::string benc
     std::ofstream report_file("reports/" + benchmark_name + ".csv", std::ios::app);
 
     if (emit_header)
-        report_file << "num_entries,num_warmup,num_repitions,min,1st,10th,25th,median,75th,90th,99th,max,avg,1-99_avg,10-90_avg,median_kops,avg_kops,1-99_avg_kops,10-90_avg_kops" << std::endl;
+        report_file << "num_entries,num_warmup,num_repetitions,min,1st,10th,25th,median,75th,90th,99th,max,avg,1-99_avg,10-90_avg,median_kops,avg_kops,1-99_avg_kops,10-90_avg_kops" << std::endl;
 
     std::sort(times.begin(), times.end());
     uint64_t min_time = times.front();
@@ -114,7 +114,7 @@ void report_stats(Config &config, std::vector<uint64_t> &times, std::string benc
 
     report_file << config.num_entries << ","
                 << config.num_warmup << ","
-                << config.num_repitions << ","
+                << config.num_repetitions << ","
                 << min_time << ","
                 << first << ","
                 << tenth << ","

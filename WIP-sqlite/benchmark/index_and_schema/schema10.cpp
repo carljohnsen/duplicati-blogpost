@@ -78,7 +78,7 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::st
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         Entry entry = {
             i + 1 + config.num_entries,
@@ -155,7 +155,7 @@ int select_index_normal(Config &config)
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         uint64_t idx = rng() % entries.size();
 
@@ -242,7 +242,7 @@ int select_index_h0(Config &config)
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         uint64_t idx = rng() % entries.size();
 
@@ -339,7 +339,7 @@ int select_index_h0_size(Config &config)
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         uint64_t idx = rng() % entries.size();
 
@@ -436,7 +436,7 @@ int select_index_size(Config &config)
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repitions; i++)
+    for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
         uint64_t idx = rng() % entries.size();
 
