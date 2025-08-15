@@ -139,9 +139,18 @@ void report_stats(Config &config, std::vector<uint64_t> &times, std::string benc
 
 sqlite3 *setup_database(std::vector<std::string> &table_queries)
 {
-    // Delete the database file if it exists
-    std::cout << "Deleting database file: " << DBPATH << std::endl;
+    // Delete the database files if they exist
+    std::cout << "Deleting database files: "
+              << DBPATH << ", "
+              << DBPATH << "-wal, "
+              << DBPATH << "-shm,"
+              << DBPATH << ".backup"
+              << std::endl;
+
     std::remove(DBPATH.c_str());
+    std::remove((DBPATH + "-wal").c_str());
+    std::remove((DBPATH + "-shm").c_str());
+    std::remove((DBPATH + ".backup").c_str());
 
     std::cout << "Creating database file: " << DBPATH << std::endl;
     sqlite3 *db;
