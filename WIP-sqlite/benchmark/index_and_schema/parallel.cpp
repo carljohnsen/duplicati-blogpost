@@ -10,6 +10,20 @@ struct Entry
     uint64_t blockset_id;
 };
 
+sqlite3 *open_connection(const std::vector<std::string> &pragmas)
+{
+    sqlite3 *db;
+    // sqlite3_open_v2(DBPATH.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+    sqlite3_open(DBPATH.c_str(), &db);
+
+    for (const auto &pragma : pragmas)
+    {
+        if (!assert_sqlite_return_code(sqlite3_exec(db, pragma.c_str(), nullptr, nullptr, nullptr), db, "Set pragma " + pragma))
+            return nullptr;
+    }
+    return db;
+}
+
 int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t num_entries)
 {
     auto begin = std::chrono::high_resolution_clock::now();
@@ -81,6 +95,7 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
 
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
+    sqlite3_wal_checkpoint(db, nullptr);
 
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -189,38 +204,75 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
     return 0;
 }
 
-void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int *return_code)
+void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
     std::string sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
     sqlite3_stmt *stmt;
     if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare select statement"))
     {
-        *return_code = -1;
+        return_code = -1;
         return;
     }
 
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
     for (uint64_t i = 0; i < runs; i++)
     {
-        sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        Entry entry;
+        bool create_new = (rng() % 100) >= 101;
+        if (create_new)
+        {
+            entry = {
+                next_id++,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+        }
+
         sqlite3_bind_text(stmt, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, prefix + " query execution " + std::to_string(i)))
-            return -1;
-        if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt, 0), prefix + " ID check"))
-            return -1;
+        auto rc = sqlite3_step(stmt);
+        if (!assert_sqlite_return_code(rc, db, "query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        if (create_new)
+        {
+            if (!assert_value_matches(rc, SQLITE_DONE, "Insert statement return code on unknown entry"))
+            {
+                return_code = -1;
+                return;
+            }
+        }
+        else
+        {
+            if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check"))
+            {
+                return_code = -1;
+                return;
+            }
+        }
         sqlite3_reset(stmt);
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-
-        return 0;
     }
 
     sqlite3_finalize(stmt);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_close(db);
 
-    *return_code = 0;
+    return_code = 0;
     return;
 }
 
@@ -570,15 +622,30 @@ int measure_all(std::vector<Entry> &entries, Config &config, std::string &report
     //     return -1;
     //
     std::vector<std::thread> threads;
-    std::vector<int> return_codes;
+    std::vector<int> return_codes(config.num_threads);
 
     for (int i = 0; i < config.num_threads; i++)
-        threads.emplace_back(measure_select, i, std::ref(pragmas), std::ref(config), std::ref(entries), &return_codes[i]);
+        threads.emplace_back(measure_select, i, config.num_warmup, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
     for (auto &thread : threads)
         thread.join();
     for (auto &return_code : return_codes)
         if (return_code != 0)
             return -1;
+    threads.clear();
+
+    auto begin = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < config.num_threads; i++)
+        threads.emplace_back(measure_select, i, config.num_repetitions / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
+    for (auto &thread : threads)
+        thread.join();
+    auto end = std::chrono::high_resolution_clock::now();
+    for (auto &return_code : return_codes)
+        if (return_code != 0)
+            return -1;
+    threads.clear();
+    std::cout << "Parallel select took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " ms." << std::endl;
 
     // if (measure_xor1(db, config, rng, entries, "parallel_xor1_" + report_name) != 0)
     //     return -1;
@@ -595,24 +662,12 @@ int measure_all(std::vector<Entry> &entries, Config &config, std::string &report
     return 0;
 }
 
-sqlite3 *open_connection(const std::vector<std::string> &pragmas)
-{
-    sqlite3 *db;
-    sqlite3_open(DBPATH.c_str(), &db);
-
-    for (const auto &pragma : pragmas)
-    {
-        sqlite3_exec(db, pragma.c_str(), nullptr, nullptr, nullptr);
-    }
-    return db;
-}
-
 int main(int argc, char *argv[])
 {
     auto config = parse_args(argc, argv);
 
     std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
-        {"normal", {}},
+        //{"normal", {}},
         // {"synch_off", {"PRAGMA synchronous = OFF;"}},
         // {"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
         // {"synch_full", {"PRAGMA synchronous = FULL;"}},
@@ -648,7 +703,8 @@ int main(int argc, char *argv[])
         // {"threads_8", {"PRAGMA threads = 8;"}},
         // {"threads_16", {"PRAGMA threads = 16;"}},
         // {"threads_32", {"PRAGMA threads = 32;"}},
-        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;", "PRAGMA busy_timeout = 1000;"}}
+        {"combination", {"PRAGMA busy_timeout = 1000;", "PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
         //
     };
 
@@ -667,6 +723,7 @@ int main(int argc, char *argv[])
     std::mt19937 rng(2025'07'08);
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
+    sqlite3_exec(db, "PRAGMA journal_mode = WAL;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
     std::filesystem::copy(DBPATH, DBPATH + ".backup", std::filesystem::copy_options::overwrite_existing);
