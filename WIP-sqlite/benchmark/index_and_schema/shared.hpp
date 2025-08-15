@@ -63,7 +63,7 @@ Config parse_args(int argc, char *argv[])
             config.num_warmup = std::stoi(argv[++i]);
         else if (std::string(argv[i]) == "--num-repetitions" && i + 1 < argc)
             config.num_repetitions = std::stoi(argv[++i]);
-        else if (std::string(argv[i]) == "--num_threads" && i + 1 < argc)
+        else if (std::string(argv[i]) == "--num-threads" && i + 1 < argc)
             config.num_threads = std::stoi(argv[++i]);
         else
             std::cerr << "Unknown argument: " << argv[i] << std::endl;
