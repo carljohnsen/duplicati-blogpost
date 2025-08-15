@@ -27,6 +27,7 @@ struct Config
     uint64_t num_entries = 100'000;
     uint64_t num_warmup = 1'000;
     uint64_t num_repetitions = 10'000;
+    uint64_t num_threads = 8;
 };
 
 bool assert_sqlite_return_code(int rc, sqlite3 *db, const std::string &context)
@@ -60,8 +61,10 @@ Config parse_args(int argc, char *argv[])
             config.num_entries = std::stoi(argv[++i]);
         else if (std::string(argv[i]) == "--num-warmup" && i + 1 < argc)
             config.num_warmup = std::stoi(argv[++i]);
-        else if (std::string(argv[i]) == "--num-repitions" && i + 1 < argc)
+        else if (std::string(argv[i]) == "--num-repetitions" && i + 1 < argc)
             config.num_repetitions = std::stoi(argv[++i]);
+        else if (std::string(argv[i]) == "--num_threads" && i + 1 < argc)
+            config.num_threads = std::stoi(argv[++i]);
         else
             std::cerr << "Unknown argument: " << argv[i] << std::endl;
     }
