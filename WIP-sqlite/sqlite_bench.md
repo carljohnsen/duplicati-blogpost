@@ -31,7 +31,7 @@ Before we begin, we need to outline what we are investigating:
 
 - Can we achieve 1M queries per second with SQLite?
 - Is C# the bottleneck, or is it the SQLite library?
-- Can we still achieve performance on-disk without having to run in memory?
+- Can we still achieve performance on-disk without having to run everything in memory?
 
 ## Benchmarks
 
@@ -114,16 +114,16 @@ JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID
 WHERE BlocksetEntry.BlocksetID = ?;
 ```
 
-### Rebuild a blockset
+### Adding blocksets
 
-Finally, we want to benchmark the process of rebuilding a blockset, where we first create a new blockset:
+Finally, we want to benchmark the process of adding blocksets, where we first create a new blockset:
 
 ```sql
-INSERT INTO Blockset (Length) VALUES (?);
+INSERT INTO Blockset (Length) VALUES (0);
 SELECT last_insert_rowid() AS ID;
 ```
 
-Then we check if the block already exists:
+Then we either pick an existing block or create a new one. Then check if the block already exists:
 
 ```sql
 SELECT ID FROM Block WHERE Hash = ? AND Size = ?;
@@ -145,8 +145,10 @@ INSERT INTO BlocksetEntry (BlocksetID, BlockID) VALUES (?, ?);
 And increment the length of the blockset:
 
 ```sql
-UPDATE Blockset SET Length = Length + ? WHERE ID = ?;
+UPDATE Blockset SET Length = Length + 1 WHERE ID = ?;
 ```
+
+Then with some probability, we'll start a new blockset.
 
 ## Tuning
 
@@ -155,6 +157,8 @@ We will be using all of the compiler optimizations available; `-O3 -march=native
 To further maximize performance, we will use prepared statements and each query will be run in a transaction.
 
 ### Indexes and schema changes
+
+TODO here the database is created from scratch for every benchmark, because we want to investigate the effect on the indices as if they're built "on-the-fly". Deleting and creating the indices only could result in better balance, and it'll put the database in an incorrect state (compared to what we'd expect in the real world).
 
 The obvious first step to improving database performance is to add indices to the tables.
 Duplicati already uses indices, so there's not much we can do here.
