@@ -1,4 +1,4 @@
-CXXFLAGS=-std=c++20 -O3 -mtune=native -flto
+CXXFLAGS=-std=c++20 -O3 -mtune=native -flto -lsqlite3 -fopenmp
 
 # Check if macOS
 ifeq ($(shell uname), Darwin)
@@ -9,14 +9,14 @@ else
 	CXXFLAGS += -march=native
 endif
 
-TARGETS=schema1 schema4 schema7 schema10
+TARGETS=schema1 schema4 schema7 schema10 pragmas parallel
 TARGETS := $(addprefix bin/, $(TARGETS))
 
 all: $(TARGETS)
 
 bin/%: %.cpp shared.hpp
 	@mkdir -p bin
-	$(CXX) $(CXXFLAGS) -o $@ $< shared.hpp -lsqlite3
+	$(CXX) $(CXXFLAGS) -o $@ $< shared.hpp
 
 clean:
 	rm -rf bin reports benchmark.sqlite
