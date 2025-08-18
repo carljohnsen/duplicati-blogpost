@@ -121,7 +121,7 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
     return 0;
 }
 
-void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
+void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
@@ -179,11 +179,12 @@ void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
 
     sqlite3_close(db);
 
+    num_rows = runs; // Number of rows inserted
     return_code = 0;
     return;
 }
 
-void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
+void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
@@ -248,14 +249,14 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
     }
 
     sqlite3_finalize(stmt);
-
     sqlite3_close(db);
 
+    num_rows = runs; // Number of rows selected
     return_code = 0;
     return;
 }
 
-void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
+void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
@@ -331,6 +332,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
                         return;
                     }
                     sqlite3_reset(stmt_insert);
+                    num_rows += 2;
                     break;
                 }
                 else
@@ -356,6 +358,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
                     return_code = -1;
                     return;
                 }
+                num_rows++;
                 break;
             }
         }
@@ -371,7 +374,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     return;
 }
 
-void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
+void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
@@ -446,6 +449,7 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         }
         sqlite3_reset(stmt_select);
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+        num_rows += 2;
     };
 
     sqlite3_finalize(stmt_insert);
@@ -469,7 +473,7 @@ uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
     return count;
 }
 
-void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
+void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
@@ -492,7 +496,7 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         max_blockset = std::max(max_blockset, entry.blockset_id);
     }
 
-    for (uint64_t i = 0; i < runs; i++)
+    while (true)
     {
         sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         uint64_t blockset_id = (rng() % max_blockset) + 1;
@@ -530,6 +534,9 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
             return_code = -1;
             return;
         }
+        num_rows += count;
+        if (num_rows > runs)
+            break;
     };
 
     sqlite3_finalize(stmt);
@@ -701,13 +708,14 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
     return 0;
 }
 
-int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config &, const std::vector<Entry> &, int &)> f, std::vector<Entry> &entries, Config &config, std::string report_name, std::vector<std::string> &pragmas)
+int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config &, const std::vector<Entry> &, int &, int &)> f, std::vector<Entry> &entries, Config &config, std::string report_name, std::vector<std::string> &pragmas)
 {
     std::vector<std::thread> threads;
     std::vector<int> return_codes(config.num_threads);
+    std::vector<int> num_rows(config.num_threads);
 
     for (int i = 0; i < config.num_threads; i++)
-        threads.emplace_back(f, i, config.num_warmup / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
+        threads.emplace_back(f, i, config.num_warmup / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]), std::ref(num_rows[i]));
     for (auto &thread : threads)
         thread.join();
     threads.clear();
@@ -720,7 +728,7 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
 
     auto begin = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < config.num_threads; i++)
-        threads.emplace_back(f, i, config.num_repetitions / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
+        threads.emplace_back(f, i, config.num_repetitions / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]), std::ref(num_rows[i]));
     for (auto &thread : threads)
         thread.join();
     auto end = std::chrono::high_resolution_clock::now();
@@ -729,13 +737,16 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
     for (auto &return_code : return_codes)
         if (return_code != 0)
             return -1;
+    uint64_t total_rows = 0;
+    for (auto &num_row : num_rows)
+        total_rows += num_row;
 
     std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
 
     std::cout << "Parallel " << report_name << " took "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
               << " ms ("
-              << float(config.num_repetitions) / std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << float(total_rows) / std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
               << " kop/s)" << std::endl;
 
     return 0;
