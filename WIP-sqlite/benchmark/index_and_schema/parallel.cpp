@@ -737,6 +737,20 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
 
 int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config &, const std::vector<Entry> &, int &, int &)> f, std::vector<Entry> &entries, Config &config, std::string report_name, std::vector<std::string> &pragmas)
 {
+    // Copy the backed up database
+    auto copy_db = []()
+    {
+        std::filesystem::remove(DBPATH + "-shm");
+        std::filesystem::remove(DBPATH + "-wal");
+        std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
+        sqlite3 *db;
+        sqlite3_open(DBPATH.c_str(), &db);
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+        sqlite3_wal_checkpoint(db, nullptr);
+        sqlite3_close(db);
+    };
+    copy_db();
+
     std::vector<std::thread> threads;
     std::vector<int> return_codes(config.num_threads);
     std::vector<int> num_rows(config.num_threads);
@@ -750,8 +764,7 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
         if (return_code != 0)
             return -1;
 
-    // Copy the backed up database
-    std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
+    copy_db();
 
     auto begin = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < config.num_threads; i++)
@@ -768,8 +781,6 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
     for (auto &num_row : num_rows)
         total_rows += num_row;
 
-    std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
-
     std::cout << "Parallel " << report_name << " took "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
               << " ms ("
@@ -782,26 +793,23 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
 int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas)
 {
 
-    // if (measure(measure_insert, entries, config, "insert", pragmas) != 0)
-    //     return -1;
+    if (measure(measure_insert, entries, config, "insert", pragmas) != 0)
+        return -1;
 
-    // if (measure(measure_select, entries, config, "select", pragmas) != 0)
-    //     return -1;
+    if (measure(measure_select, entries, config, "select", pragmas) != 0)
+        return -1;
 
-    // if (measure(measure_xor1, entries, config, "xor1", pragmas) != 0)
-    //     return -1;
+    if (measure(measure_xor1, entries, config, "xor1", pragmas) != 0)
+        return -1;
 
-    // if (measure(measure_xor2, entries, config, "xor2", pragmas) != 0)
-    //     return -1;
+    if (measure(measure_xor2, entries, config, "xor2", pragmas) != 0)
+        return -1;
 
-    // if (measure(measure_join, entries, config, "join", pragmas) != 0)
-    //     return -1;
+    if (measure(measure_join, entries, config, "join", pragmas) != 0)
+        return -1;
 
     if (measure(measure_new_blockset, entries, config, "new_blockset", pragmas) != 0)
-    {
-        std::cerr << "Error during new_blockset with report name: " << report_name << std::endl;
         return -1;
-    }
 
     return 0;
 }
@@ -811,7 +819,7 @@ int main(int argc, char *argv[])
     auto config = parse_args(argc, argv);
 
     std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
-        //{"normal", {}},
+        // {"normal", {}},
         // {"synch_off", {"PRAGMA synchronous = OFF;"}},
         // {"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
         // {"synch_full", {"PRAGMA synchronous = FULL;"}},
@@ -867,7 +875,6 @@ int main(int argc, char *argv[])
     std::mt19937 rng(2025'07'08);
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
-    sqlite3_exec(db, "PRAGMA journal_mode = WAL;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
     std::filesystem::copy(DBPATH, DBPATH + ".backup", std::filesystem::copy_options::overwrite_existing);
