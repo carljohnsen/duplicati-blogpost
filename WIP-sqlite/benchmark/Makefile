@@ -14,9 +14,9 @@ TARGETS := $(addprefix bin/, $(TARGETS))
 
 all: $(TARGETS)
 
-bin/%: %.cpp shared.hpp
+bin/%: cpp/%.cpp cpp/shared.hpp
 	@mkdir -p bin
-	$(CXX) $(CXXFLAGS) -o $@ $< shared.hpp
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 clean:
 	rm -rf bin reports benchmark.sqlite

@@ -44,6 +44,6 @@ set COMPILEFLAGS=/std:c++20 /EHsc /favor:AMD64 /O2 /openmp
 
 : For each target, compile using cl
 for %%t in (%TARGETS%) do (
-    cl /c /Foobj\%%t.obj /I %INCLUDE_DIRS% %%t.cpp %COMPILEFLAGS%
+    cl /c /Foobj\%%t.obj /I %INCLUDE_DIRS% cpp\%%t.cpp cpp\shared.hpp %COMPILEFLAGS%
     link /OUT:bin\%%t.exe obj\%%t.obj %LIBS% %LINKFLAGS%
 )
