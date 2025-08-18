@@ -728,7 +728,10 @@ int main(int argc, char *argv[])
     {
         int ret = measure_all(entries, config, report_name, pragmas);
         if (ret != 0)
+        {
+            std::cerr << "Error during measurement with report name: " << report_name << std::endl;
             return ret;
+        }
     }
 
     if (std::filesystem::exists(DBPATH))
