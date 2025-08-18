@@ -659,8 +659,12 @@ int main(int argc, char *argv[])
             return ret;
     }
 
-    if (std::filesystem::exists(DBPATH))
-        std::filesystem::remove(DBPATH);
+    std::vector<std::string> files = {DBPATH, DBPATH + "-shm", DBPATH + "-wal"};
+    for (const auto &f : files)
+    {
+        if (std::filesystem::exists(f))
+            std::filesystem::remove(f);
+    }
 
     return 0;
 }
