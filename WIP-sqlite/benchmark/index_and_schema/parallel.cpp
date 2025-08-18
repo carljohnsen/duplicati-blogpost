@@ -106,102 +106,61 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
     return 0;
 }
 
-int measure(
-    sqlite3 *db,
-    Config &config,
-    std::mt19937 &rng,
-    const std::function<int(sqlite3 *, const Entry &, uint64_t, const std::string &)> &f,
-    const std::string &report_name,
-    const int create_entry, // Percentage probability of creating a new entry
-    const std::vector<Entry> &entries)
+void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
 {
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    uint64_t next_id = config.num_entries;
-    for (uint64_t i = 0; i < config.num_warmup; i++)
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
     {
-        Entry entry;
-        if ((rng() % 100) >= (100 - create_entry))
-        {
-            entry = {
-                next_id++,
-                random_hash_string(rng, 44),
-                rng() % 1000,
-                0};
-        }
-        else
-        {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
-        }
-
-        auto begin = std::chrono::high_resolution_clock::now();
-
-        if (f(db, entry, i, "Warmup") != 0)
-            return -1;
-
-        auto end = std::chrono::high_resolution_clock::now();
+        return_code = -1;
+        return;
     }
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
-
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    std::vector<uint64_t> times;
-    next_id = config.num_entries;
-    for (uint64_t i = 0; i < config.num_repetitions; i++)
-    {
-        Entry entry;
-        if ((rng() % 100) >= (100 - create_entry))
-        {
-            entry = {
-                next_id++,
-                random_hash_string(rng, 44),
-                rng() % 1000,
-                0};
-        }
-        else
-        {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
-        }
-
-        auto begin = std::chrono::high_resolution_clock::now();
-
-        if (f(db, entry, i, "Actual") != 0)
-            return -1;
-
-        auto end = std::chrono::high_resolution_clock::now();
-
-        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
-    }
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
-
-    report_stats(config, times, report_name);
-
-    return 0;
-}
-
-int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
-{
     std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
     sqlite3_stmt *stmt;
     if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare insert statement"))
-        return -1;
-
-    auto insert_inner = [=](sqlite3 *db, const Entry &entry, uint64_t i, const std::string &prefix) -> int
     {
+        return_code = -1;
+        return;
+    }
+
+    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        Entry entry;
+        bool create_new = (rng() % 100) >= 0;
+        if (create_new)
+        {
+            entry = {
+                next_id++,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
+
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, prefix + " insert " + std::to_string(i)))
-            return -1;
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "query insert " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
         sqlite3_reset(stmt);
 
-        return 0;
-    };
-
-    if (measure(db, config, rng, insert_inner, report_name, 100, entries) != 0)
-        return -1;
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    }
 
     sqlite3_finalize(stmt);
 
-    return 0;
+    sqlite3_close(db);
+
+    return_code = 0;
+    return;
 }
 
 void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
@@ -221,10 +180,11 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
         return;
     }
 
-    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    // sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
     uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
     for (uint64_t i = 0; i < runs; i++)
     {
+        sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         Entry entry;
         bool create_new = (rng() % 100) >= 101;
         if (create_new)
@@ -265,10 +225,11 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
             }
         }
         sqlite3_reset(stmt);
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     }
 
     sqlite3_finalize(stmt);
-    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    // sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_close(db);
 
@@ -316,8 +277,8 @@ int measure_xor1(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         return 0;
     };
 
-    if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
-        return -1;
+    // if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
+    //     return -1;
 
     sqlite3_finalize(stmt_select);
     sqlite3_finalize(stmt_insert);
@@ -355,8 +316,8 @@ int measure_xor2(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         return 0;
     };
 
-    if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
-        return -1;
+    // if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
+    //     return -1;
 
     sqlite3_finalize(stmt_insert);
     sqlite3_finalize(stmt_select);
@@ -615,37 +576,52 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
     return 0;
 }
 
-int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas)
+int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config &, const std::vector<Entry> &, int &)> f, std::vector<Entry> &entries, Config &config, std::string report_name, std::vector<std::string> &pragmas)
 {
-
-    // if (measure_insert(db, config, rng, entries, "parallel_insert_" + report_name) != 0)
-    //     return -1;
-    //
     std::vector<std::thread> threads;
     std::vector<int> return_codes(config.num_threads);
 
     for (int i = 0; i < config.num_threads; i++)
-        threads.emplace_back(measure_select, i, config.num_warmup, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
+        threads.emplace_back(f, i, config.num_warmup / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
     for (auto &thread : threads)
         thread.join();
+    threads.clear();
     for (auto &return_code : return_codes)
         if (return_code != 0)
             return -1;
-    threads.clear();
+
+    // Copy the backed up database
+    std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
 
     auto begin = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < config.num_threads; i++)
-        threads.emplace_back(measure_select, i, config.num_repetitions / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
+        threads.emplace_back(f, i, config.num_repetitions / config.num_threads, std::ref(pragmas), std::ref(config), std::ref(entries), std::ref(return_codes[i]));
     for (auto &thread : threads)
         thread.join();
     auto end = std::chrono::high_resolution_clock::now();
+    threads.clear();
+
     for (auto &return_code : return_codes)
         if (return_code != 0)
             return -1;
-    threads.clear();
-    std::cout << "Parallel select took "
+
+    std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
+
+    std::cout << "Parallel " << report_name << " took "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
               << " ms." << std::endl;
+
+    return 0;
+}
+
+int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas)
+{
+
+    if (measure(measure_insert, entries, config, "insert", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_select, entries, config, "select", pragmas) != 0)
+        return -1;
 
     // if (measure_xor1(db, config, rng, entries, "parallel_xor1_" + report_name) != 0)
     //     return -1;
