@@ -143,7 +143,7 @@ int measure(
         }
         else
         {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
         }
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -491,7 +491,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         }
         else
         {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
         }
 
         if (add_to_blockset_inner(db, entry, "Warmup") != 0)
@@ -525,7 +525,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         }
         else
         {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
         }
 
         auto begin = std::chrono::high_resolution_clock::now();

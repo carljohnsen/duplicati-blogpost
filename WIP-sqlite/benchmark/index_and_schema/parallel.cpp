@@ -237,7 +237,7 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
         }
         else
         {
-            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
         }
 
         sqlite3_bind_text(stmt, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
