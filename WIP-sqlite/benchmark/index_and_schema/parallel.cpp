@@ -16,11 +16,26 @@ sqlite3 *open_connection(const std::vector<std::string> &pragmas)
     // sqlite3_open_v2(DBPATH.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
     sqlite3_open(DBPATH.c_str(), &db);
 
+    // Read the current timeout
+    if (!assert_sqlite_return_code(sqlite3_exec(db, "PRAGMA busy_timeout;", nullptr, nullptr, nullptr), db, "Get busy_timeout"))
+        return nullptr;
+    uint64_t busy_timeout = sqlite3_column_int64(nullptr, 0);
+
+    // Timeout is needed for some of the pragmas, as they can lock the database.
+    if (!assert_sqlite_return_code(sqlite3_exec(db, "PRAGMA busy_timeout = 100;", nullptr, nullptr, nullptr), db, "Set busy_timeout"))
+        return nullptr;
+
     for (const auto &pragma : pragmas)
     {
         if (!assert_sqlite_return_code(sqlite3_exec(db, pragma.c_str(), nullptr, nullptr, nullptr), db, "Set pragma " + pragma))
             return nullptr;
     }
+
+    // Reset timeout
+    std::string busy_timeout_sql = "PRAGMA busy_timeout = " + std::to_string(busy_timeout) + ";";
+    if (!assert_sqlite_return_code(sqlite3_exec(db, busy_timeout_sql.c_str(), nullptr, nullptr, nullptr), db, "Reset busy_timeout"))
+        return nullptr;
+
     return db;
 }
 
@@ -687,7 +702,7 @@ int main(int argc, char *argv[])
         // {"threads_16", {"PRAGMA threads = 16;"}},
         // {"threads_32", {"PRAGMA threads = 32;"}},
         //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;", "PRAGMA busy_timeout = 1000;"}}
-        {"combination", {"PRAGMA busy_timeout = 100;", "PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
         //
     };
 
