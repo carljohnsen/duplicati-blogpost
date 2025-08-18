@@ -200,7 +200,6 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
         return;
     }
 
-    // sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
     uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
     for (uint64_t i = 0; i < runs; i++)
     {
@@ -249,7 +248,6 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
     }
 
     sqlite3_finalize(stmt);
-    // sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_close(db);
 
