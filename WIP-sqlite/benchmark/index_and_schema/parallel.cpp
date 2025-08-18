@@ -614,7 +614,9 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
 
     std::cout << "Parallel " << report_name << " took "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
-              << " ms." << std::endl;
+              << " ms ("
+              << float(config.num_repetitions) / std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " kop/s)" << std::endl;
 
     return 0;
 }
