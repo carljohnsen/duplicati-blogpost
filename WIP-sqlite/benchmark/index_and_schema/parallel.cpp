@@ -371,43 +371,89 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     return;
 }
 
-int measure_xor2(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
+void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
 {
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
     std::string
         sql_insert = "INSERT OR IGNORE INTO Block (ID, Hash, Size) VALUES (?, ?, ?);",
         sql_select = "SELECT * FROM Block WHERE Hash = ? AND Size = ?;";
     sqlite3_stmt *stmt_insert, *stmt_select;
-    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert.c_str(), -1, &stmt_insert, nullptr), db, "Prepare xor2 insert statement"))
-        return -1;
-    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor2 select statement"))
-        return -1;
-
-    auto xor_inner = [=](sqlite3 *db, const Entry &entry, uint64_t i, const std::string &prefix) -> int
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor select statement"))
     {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert.c_str(), -1, &stmt_insert, nullptr), db, "Prepare xor insert statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        Entry entry;
+        bool create_new = (rng() % 100) >= 25;
+        if (create_new)
+        {
+            entry = {
+                next_id++,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
         sqlite3_bind_int64(stmt_insert, 1, entry.id);
         sqlite3_bind_text(stmt_insert, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt_insert, 3, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt_insert), db, prefix + " xor2 insert query execution " + std::to_string(i)))
-            return -1;
+        int rc;
+        do
+        {
+            rc = sqlite3_step(stmt_insert);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "xor2 insert query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
         sqlite3_reset(stmt_insert);
         sqlite3_bind_text(stmt_select, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt_select, 2, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt_select), db, prefix + " xor2 select query execution " + std::to_string(i)))
-            return -1;
-        if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt_select, 0), prefix + " xor2 ID check"))
-            return -1;
+        do
+        {
+            rc = sqlite3_step(stmt_select);
+        } while (rc == SQLITE_BUSY);
+
+        if (!assert_sqlite_return_code(rc, db, "xor2 select query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt_select, 0), "xor2 ID check"))
+        {
+            return_code = -1;
+            return;
+        }
         sqlite3_reset(stmt_select);
-
-        return 0;
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     };
-
-    // if (measure(db, config, rng, xor_inner, report_name, 50, entries) != 0)
-    //     return -1;
 
     sqlite3_finalize(stmt_insert);
     sqlite3_finalize(stmt_select);
+    sqlite3_close(db);
 
-    return 0;
+    return_code = 0;
+    return;
 }
 
 uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
@@ -713,8 +759,8 @@ int measure_all(std::vector<Entry> &entries, Config &config, std::string &report
     if (measure(measure_xor1, entries, config, "xor1", pragmas) != 0)
         return -1;
 
-    // if (measure_xor2(db, config, rng, entries, "parallel_xor2_" + report_name) != 0)
-    //     return -1;
+    if (measure(measure_xor2, entries, config, "xor2", pragmas) != 0)
+        return -1;
 
     // if (measure_join(db, config, rng, entries, "parallel_join_" + report_name) != 0)
     //     return -1;
