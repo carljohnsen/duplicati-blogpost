@@ -267,7 +267,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     }
     std::string
         sql_select = "SELECT ID FROM Block WHERE (Hash = ? AND Size = ?);",
-        sql_insert = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+        sql_insert = "INSERT INTO Block(Hash, Size) VALUES (?, ?);";
     sqlite3_stmt *stmt_select, *stmt_insert;
     if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor select statement"))
     {
@@ -280,7 +280,6 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         return;
     }
 
-    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
     for (uint64_t i = 0; i < runs; i++)
     {
         sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
@@ -289,7 +288,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         if (create_new)
         {
             entry = {
-                next_id++,
+                (uint64_t)-1,
                 random_hash_string(rng, 44),
                 rng() % 1000,
                 0};
@@ -320,9 +319,8 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
             if (found_id == -1)
             {
                 // Not found, insert
-                sqlite3_bind_int64(stmt_insert, 1, entry.id);
-                sqlite3_bind_text(stmt_insert, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-                sqlite3_bind_int64(stmt_insert, 3, entry.size);
+                sqlite3_bind_text(stmt_insert, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+                sqlite3_bind_int64(stmt_insert, 2, entry.size);
                 rc = sqlite3_step(stmt_insert);
                 if (rc != SQLITE_BUSY)
                 {
@@ -384,7 +382,7 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         return;
     }
     std::string
-        sql_insert = "INSERT OR IGNORE INTO Block (ID, Hash, Size) VALUES (?, ?, ?);",
+        sql_insert = "INSERT OR IGNORE INTO Block (Hash, Size) VALUES (?, ?);",
         sql_select = "SELECT * FROM Block WHERE Hash = ? AND Size = ?;";
     sqlite3_stmt *stmt_insert, *stmt_select;
     if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor select statement"))
@@ -398,7 +396,6 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         return;
     }
 
-    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
     for (uint64_t i = 0; i < runs; i++)
     {
         sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
@@ -407,7 +404,7 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         if (create_new)
         {
             entry = {
-                next_id++,
+                (uint64_t)-1,
                 random_hash_string(rng, 44),
                 rng() % 1000,
                 0};
@@ -416,9 +413,8 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         {
             entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
         }
-        sqlite3_bind_int64(stmt_insert, 1, entry.id);
-        sqlite3_bind_text(stmt_insert, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
-        sqlite3_bind_int64(stmt_insert, 3, entry.size);
+        sqlite3_bind_text(stmt_insert, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_insert, 2, entry.size);
         int rc;
         do
         {
@@ -438,11 +434,6 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         } while (rc == SQLITE_BUSY);
 
         if (!assert_sqlite_return_code(rc, db, "xor2 select query execution " + std::to_string(i)))
-        {
-            return_code = -1;
-            return;
-        }
-        if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt_select, 0), "xor2 ID check"))
         {
             return_code = -1;
             return;
