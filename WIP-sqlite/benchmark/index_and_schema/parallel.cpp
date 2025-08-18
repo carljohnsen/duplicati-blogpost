@@ -145,7 +145,12 @@ void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, "query insert " + std::to_string(i)))
+        int rc;
+        do
+        {
+            rc = sqlite3_step(stmt);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "query insert " + std::to_string(i)))
         {
             return_code = -1;
             return;
@@ -680,7 +685,7 @@ int main(int argc, char *argv[])
         // {"threads_16", {"PRAGMA threads = 16;"}},
         // {"threads_32", {"PRAGMA threads = 32;"}},
         //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;", "PRAGMA busy_timeout = 1000;"}}
-        {"combination", {"PRAGMA busy_timeout = 1000;", "PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        {"combination", {"PRAGMA busy_timeout = 100;", "PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
         //
     };
 
