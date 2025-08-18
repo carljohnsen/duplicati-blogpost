@@ -469,12 +469,22 @@ uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
     return count;
 }
 
-int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
+void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code)
 {
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
     std::string sql = "SELECT Block.ID, Block.Hash, Block.Size FROM Block JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID WHERE BlocksetEntry.BlocksetID = ?;";
     sqlite3_stmt *stmt;
     if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare join statement"))
-        return -1;
+    {
+        return_code = -1;
+        return;
+    }
 
     uint64_t max_blockset = 0;
     for (auto &entry : entries)
@@ -482,8 +492,11 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         max_blockset = std::max(max_blockset, entry.blockset_id);
     }
 
-    auto join_inner = [=](sqlite3 *db, uint64_t blockset_id, uint64_t expected_count, const std::string &prefix) -> int
+    for (uint64_t i = 0; i < runs; i++)
     {
+        sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        uint64_t blockset_id = (rng() % max_blockset) + 1;
+        uint64_t expected_count = blockset_count(blockset_id, entries);
         sqlite3_bind_int64(stmt, 1, blockset_id);
         uint64_t count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW)
@@ -494,55 +507,36 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
             auto found_size = (uint64_t)sqlite3_column_int64(stmt, 2);
             auto entry = entries[found_id];
             if (!assert_value_matches(entry.hash, found_hash, "Hash check"))
-                return -1;
+            {
+                return_code = -1;
+                return;
+            }
             if (!assert_value_matches(entry.size, found_size, "Size check"))
-                return -1;
+            {
+                return_code = -1;
+                return;
+            }
             if (!assert_value_matches(entry.blockset_id, blockset_id, "Blockset ID check"))
-                return -1;
+            {
+                return_code = -1;
+                return;
+            }
             count++;
         }
-        if (!assert_value_matches(expected_count, count, "Blockset count check"))
-            return -1;
         sqlite3_reset(stmt);
-
-        return 0;
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+        if (!assert_value_matches(expected_count, count, "Blockset count check"))
+        {
+            return_code = -1;
+            return;
+        }
     };
 
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
-    for (uint64_t i = 0; i < config.num_warmup; i++)
-    {
-        uint64_t blockset_id = (rng() % max_blockset) + 1;
-        uint64_t expected_count = blockset_count(blockset_id, entries);
-        if (join_inner(db, blockset_id, expected_count, "Warmup") != 0)
-            return -1;
-    }
-
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
-
-    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
-    std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repetitions; i++)
-    {
-        uint64_t blockset_id = (rng() % max_blockset) + 1;
-        uint64_t expected_count = blockset_count(blockset_id, entries);
-
-        auto begin = std::chrono::high_resolution_clock::now();
-        if (join_inner(db, blockset_id, expected_count, "Actual") != 0)
-            return -1;
-        auto end = std::chrono::high_resolution_clock::now();
-
-        times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / expected_count);
-    }
-
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
-
     sqlite3_finalize(stmt);
+    sqlite3_close(db);
 
-    report_stats(config, times, report_name);
-
-    return 0;
+    return_code = 0;
+    return;
 }
 
 int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vector<Entry> &entries, const std::string &report_name)
@@ -762,8 +756,8 @@ int measure_all(std::vector<Entry> &entries, Config &config, std::string &report
     if (measure(measure_xor2, entries, config, "xor2", pragmas) != 0)
         return -1;
 
-    // if (measure_join(db, config, rng, entries, "parallel_join_" + report_name) != 0)
-    //     return -1;
+    if (measure(measure_join, entries, config, "join", pragmas) != 0)
+        return -1;
 
     // if (measure_new_blockset(db, config, rng, entries, "parallel_blockset_" + report_name) != 0)
     //     return -1;
