@@ -626,7 +626,9 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
                     return -1;
                 found_id = sqlite3_column_int64(stmt_last_row, 0);
                 sqlite3_reset(stmt_last_row);
+                num_rows += 2;
             }
+            num_rows++;
             sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
             break;
         }
@@ -643,6 +645,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
         if (!assert_sqlite_return_code(rc, db, "insert blockset entry"))
             return -1;
         sqlite3_reset(stmt_insert_blockset_entry);
+        num_rows++;
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
         // Increment the blockset
@@ -655,6 +658,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
         if (!assert_sqlite_return_code(rc, db, "update blockset"))
             return -1;
         sqlite3_reset(stmt_update_blockset);
+        num_rows++;
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
         return 0;
@@ -680,6 +684,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
             return -1;
         blockset_id = sqlite3_column_int64(stmt_last_row, 0);
         sqlite3_reset(stmt_last_row);
+        num_rows += 2;
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
         return 0;
