@@ -4,7 +4,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Text;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]

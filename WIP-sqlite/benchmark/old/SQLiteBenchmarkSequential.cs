@@ -1,7 +1,7 @@
 using Duplicati.Library.Main.Database;
 using System.Data;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     public class SQLiteBenchmarkSequential : IDisposable
     {

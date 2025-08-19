@@ -4,7 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using System.Data;
 using System.Text;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]

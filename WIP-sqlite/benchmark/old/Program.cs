@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks;
 using BenchmarkDotNet.Running;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
 
     public class Program

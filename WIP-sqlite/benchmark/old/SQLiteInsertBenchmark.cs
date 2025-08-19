@@ -2,7 +2,7 @@ using BenchmarkDotNet.Attributes;
 using Duplicati.Library.Main.Database;
 using System.Data;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]

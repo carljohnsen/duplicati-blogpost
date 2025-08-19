@@ -1,4 +1,4 @@
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
 
     public static class SQLQeuriesBlob

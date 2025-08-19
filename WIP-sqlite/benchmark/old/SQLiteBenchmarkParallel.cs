@@ -3,7 +3,7 @@ using System.Data;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     public class SQLiteBenchmarkParallel : IDisposable
     {

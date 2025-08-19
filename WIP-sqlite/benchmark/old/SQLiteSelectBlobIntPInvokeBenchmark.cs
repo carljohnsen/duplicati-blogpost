@@ -9,7 +9,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]

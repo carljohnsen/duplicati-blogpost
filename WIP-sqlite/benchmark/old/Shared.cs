@@ -3,7 +3,7 @@ using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 
-namespace sqlite_bench
+namespace sqlite_bench_old
 {
     public enum Backends
     {
