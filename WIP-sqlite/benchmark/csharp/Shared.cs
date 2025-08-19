@@ -21,7 +21,7 @@ namespace sqlite_bench
 
         private readonly Entry[] m_entries = new Entry[NumEntries];
         protected readonly Entry[] EntriesToTest = new Entry[NumRepetitions];
-        private readonly Random m_random = new(2025_07_08);
+        private static readonly Random m_random = new(2025_07_08);
         private readonly string[] pragmas = [
             "PRAGMA journal_mode = WAL;",
             "PRAGMA synchronous = NORMAL;",
@@ -30,6 +30,16 @@ namespace sqlite_bench
             "PRAGMA mmap_size = 64000000;",
             "PRAGMA threads = 8;"
         ];
+
+        private static readonly byte[] m_randomBuffer = new byte[44];
+        private static readonly string alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        private static string RandomString()
+        {
+            m_random.NextBytes(m_randomBuffer);
+            for (int j = 0; j < m_randomBuffer.Length; j++)
+                m_randomBuffer[j] = (byte)(m_randomBuffer[j] % alphanumericChars.Length);
+            return new string([.. m_randomBuffer.Select(x => alphanumericChars[x])]);
+        }
 
         public void GlobalSetup()
         {
@@ -82,7 +92,7 @@ namespace sqlite_bench
                 var entry = new Entry
                 {
                     Id = i,
-                    Hash = $"hash_{i}",
+                    Hash = RandomString(),
                     Size = m_random.Next(1, 1000),
                     BlocksetId = blockset_id
                 };
