@@ -9,9 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Data.SQLite" version="2.0.1"/>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
-    <ProjectReference Include="..\lib\duplicati\Duplicati\Library\Main\Duplicati.Library.Main.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
+    <ProjectReference Include="../lib/duplicati/Duplicati/Library/Main/Duplicati.Library.Main.csproj" />
   </ItemGroup>
 
 </Project>
