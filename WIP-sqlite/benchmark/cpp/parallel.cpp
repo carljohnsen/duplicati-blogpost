@@ -912,7 +912,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    std::vector<std::string> files = {DBPATH, DBPATH + "-shm", DBPATH + "-wal"};
+    std::vector<std::string> files = {DBPATH, DBPATH + "-shm", DBPATH + "-wal", DBPATH + ".backup"};
     for (const auto &f : files)
     {
         if (std::filesystem::exists(f))
