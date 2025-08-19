@@ -216,6 +216,10 @@ Maybe have one set of plots for each benchmark?
 
 Transactions becomes deferred to allow for parallel reads without locking the entire database.
 
+### Transaction batches
+
+Looking at the figures between parallel and pragmas, we see a huge difference due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
+
 ## Backends
 
 ### Duplicati's shipped SQLite

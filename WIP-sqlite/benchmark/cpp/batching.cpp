@@ -1,0 +1,945 @@
+#include "shared.hpp"
+
+const std::string CREATE_BLOCK_TABLE = "CREATE TABLE Block (ID INTEGER PRIMARY KEY, Hash TEXT NOT NULL, Size INTEGER NOT NULL);";
+
+struct Entry
+{
+    uint64_t id;
+    std::string hash;
+    uint64_t size;
+    uint64_t blockset_id;
+};
+
+sqlite3 *open_connection(const std::vector<std::string> &pragmas)
+{
+    sqlite3 *db;
+    // sqlite3_open_v2(DBPATH.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+    sqlite3_open(DBPATH.c_str(), &db);
+
+    // Read the current timeout
+    if (!assert_sqlite_return_code(sqlite3_exec(db, "PRAGMA busy_timeout;", nullptr, nullptr, nullptr), db, "Get busy_timeout"))
+        return nullptr;
+    uint64_t busy_timeout = sqlite3_column_int64(nullptr, 0);
+
+    // Timeout is needed for some of the pragmas, as they can lock the database.
+    if (!assert_sqlite_return_code(sqlite3_exec(db, "PRAGMA busy_timeout = 100;", nullptr, nullptr, nullptr), db, "Set busy_timeout"))
+        return nullptr;
+
+    for (const auto &pragma : pragmas)
+    {
+        if (!assert_sqlite_return_code(sqlite3_exec(db, pragma.c_str(), nullptr, nullptr, nullptr), db, "Set pragma " + pragma))
+            return nullptr;
+    }
+
+    // Reset timeout
+    std::string busy_timeout_sql = "PRAGMA busy_timeout = " + std::to_string(busy_timeout) + ";";
+    if (!assert_sqlite_return_code(sqlite3_exec(db, busy_timeout_sql.c_str(), nullptr, nullptr, nullptr), db, "Reset busy_timeout"))
+        return nullptr;
+
+    return db;
+}
+
+int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t num_entries)
+{
+    auto begin = std::chrono::high_resolution_clock::now();
+    sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    std::string
+        sql_block = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);",
+        sql_blockset = "INSERT INTO Blockset(ID, Length) VALUES (?, ?);",
+        sql_blockset_entry = "INSERT INTO BlocksetEntry(BlocksetID, BlockID) VALUES (?, ?);";
+    sqlite3_stmt *stmt_block, *stmt_blockset, *stmt_blockset_entry;
+    sqlite3_prepare_v2(db, sql_block.c_str(), -1, &stmt_block, nullptr);
+    sqlite3_prepare_v2(db, sql_blockset.c_str(), -1, &stmt_blockset, nullptr);
+    sqlite3_prepare_v2(db, sql_blockset_entry.c_str(), -1, &stmt_blockset_entry, nullptr);
+
+    uint64_t
+        blockset_id = 1,
+        blockset_count = 0;
+
+    for (uint64_t i = 0; i < num_entries; i++)
+    {
+        // Block
+        Entry entry = {
+            i,
+            random_hash_string(rng, 44),
+            rng() % 1000,
+            blockset_id};
+        entries.push_back(entry);
+        sqlite3_bind_int64(stmt_block, 1, entry.id);
+        sqlite3_bind_text(stmt_block, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_block, 3, entry.size);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_block), db, "Insert entry " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt_block);
+
+        // BlocksetEntry
+        sqlite3_bind_int64(stmt_blockset_entry, 1, blockset_id);
+        sqlite3_bind_int64(stmt_blockset_entry, 2, entry.id);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_blockset_entry), db, "Insert BlocksetEntry for entry " + std::to_string(i)))
+            return -1;
+        sqlite3_reset(stmt_blockset_entry);
+        blockset_count++;
+
+        // Blockset
+        if (rng() % 1000 > 995) // 0.5% chance to create a new Blockset
+        {
+            sqlite3_bind_int64(stmt_blockset, 1, blockset_id);
+            sqlite3_bind_int64(stmt_blockset, 2, blockset_count);
+            if (!assert_sqlite_return_code(sqlite3_step(stmt_blockset), db, "Insert Blockset for entry " + std::to_string(i)))
+                return -1;
+            sqlite3_reset(stmt_blockset);
+            blockset_id++;
+            blockset_count = 0; // Reset count for the next Blockset
+        }
+    }
+
+    // Finish the current blockset, if it has blocksetentries.
+    if (blockset_count > 0)
+    {
+        sqlite3_bind_int64(stmt_blockset, 1, blockset_id);
+        sqlite3_bind_int64(stmt_blockset, 2, blockset_count);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_blockset), db, "Insert Blockset for entry " + std::to_string(blockset_id)))
+            return -1;
+        sqlite3_reset(stmt_blockset);
+    }
+
+    sqlite3_finalize(stmt_block);
+    sqlite3_finalize(stmt_blockset);
+    sqlite3_finalize(stmt_blockset_entry);
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA optimize;", nullptr, nullptr, nullptr);
+    sqlite3_wal_checkpoint(db, nullptr);
+
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::cout << "Inserted " << entries.size() << " entries in "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " ms." << std::endl;
+
+    return 0;
+}
+
+void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string sql = "INSERT INTO Block(ID, Hash, Size) VALUES (?, ?, ?);";
+    sqlite3_stmt *stmt;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare insert statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    // if (config.num_batch == 0)
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        Entry entry;
+        bool create_new = (rng() % 100) >= 0;
+        if (create_new)
+        {
+            entry = {
+                next_id++,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        sqlite3_bind_int64(stmt, 1, entry.id);
+        sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 3, entry.size);
+        int rc;
+        do
+        {
+            rc = sqlite3_step(stmt);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "query insert " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        sqlite3_reset(stmt);
+
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+    }
+    if (config.num_batch == 0 || runs % config.num_batch != 0)
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt);
+
+    sqlite3_close(db);
+
+    num_rows = runs; // Number of rows inserted
+    return_code = 0;
+    return;
+}
+
+void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
+    sqlite3_stmt *stmt;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare select statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    // if (config.num_batch == 0)
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    uint64_t next_id = config.num_entries + tid * runs; // Ensure no id clash
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        Entry entry;
+        bool create_new = (rng() % 100) >= 101;
+        if (create_new)
+        {
+            entry = {
+                next_id++,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        sqlite3_bind_text(stmt, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, entry.size);
+        auto rc = sqlite3_step(stmt);
+        if (!assert_sqlite_return_code(rc, db, "query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        if (create_new)
+        {
+            if (!assert_value_matches(rc, SQLITE_DONE, "Insert statement return code on unknown entry"))
+            {
+                return_code = -1;
+                return;
+            }
+        }
+        else
+        {
+            if (!assert_value_matches(entry.id, (uint64_t)sqlite3_column_int64(stmt, 0), "Warmup ID check"))
+            {
+                return_code = -1;
+                return;
+            }
+        }
+        sqlite3_reset(stmt);
+
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+    }
+    if (config.num_batch == 0 || runs % config.num_batch != 0)
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    num_rows = runs; // Number of rows selected
+    return_code = 0;
+    return;
+}
+
+void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string
+        sql_select = "SELECT ID FROM Block WHERE (Hash = ? AND Size = ?);",
+        sql_insert = "INSERT INTO Block(Hash, Size) VALUES (?, ?);";
+    sqlite3_stmt *stmt_select, *stmt_insert;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor select statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert.c_str(), -1, &stmt_insert, nullptr), db, "Prepare xor insert statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        Entry entry;
+        bool create_new = (rng() % 100) >= 25;
+        if (create_new)
+        {
+            entry = {
+                (uint64_t)-1,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        while (true)
+        {
+            sqlite3_bind_text(stmt_select, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+            sqlite3_bind_int64(stmt_select, 2, entry.size);
+            int rc;
+            do
+            {
+                rc = sqlite3_step(stmt_select);
+            } while (rc == SQLITE_BUSY);
+
+            if (!assert_sqlite_return_code(rc, db, "xor1 query execution " + std::to_string(i)))
+            {
+                return_code = -1;
+                return;
+            }
+            auto found_id = rc == SQLITE_ROW ? sqlite3_column_int64(stmt_select, 0) : -1;
+            sqlite3_reset(stmt_select);
+
+            if (found_id == -1)
+            {
+                // Not found, insert
+                sqlite3_bind_text(stmt_insert, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+                sqlite3_bind_int64(stmt_insert, 2, entry.size);
+                rc = sqlite3_step(stmt_insert);
+                if (rc != SQLITE_BUSY)
+                {
+                    if (!assert_sqlite_return_code(rc, db, "xor1 insert " + std::to_string(i)))
+                    {
+                        return_code = -1;
+                        return;
+                    }
+                    sqlite3_reset(stmt_insert);
+                    num_rows += 2;
+                    break;
+                }
+                else
+                {
+                    // Connection is busy, another statement is inserting, which means the read value is no longer valid
+                    sqlite3_reset(stmt_insert);
+                    if (!assert_sqlite_return_code(sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr), db, "xor1 rollback"))
+                    {
+                        return_code = -1;
+                        return;
+                    }
+                    if (!assert_sqlite_return_code(sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr), db, "xor1 begin transaction"))
+                    {
+                        return_code = -1;
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                if (!assert_value_matches(entry.id, (uint64_t)found_id, "xor1 ID check"))
+                {
+                    return_code = -1;
+                    return;
+                }
+                num_rows++;
+                break;
+            }
+        }
+
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+    }
+    if (config.num_batch > 0 && runs % config.num_batch != 0)
+    {
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    }
+
+    sqlite3_finalize(stmt_select);
+    sqlite3_finalize(stmt_insert);
+    sqlite3_close(db);
+
+    return_code = 0;
+    return;
+}
+
+void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string
+        sql_insert = "INSERT OR IGNORE INTO Block (Hash, Size) VALUES (?, ?);",
+        sql_select = "SELECT * FROM Block WHERE Hash = ? AND Size = ?;";
+    sqlite3_stmt *stmt_insert, *stmt_select;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_select.c_str(), -1, &stmt_select, nullptr), db, "Prepare xor select statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert.c_str(), -1, &stmt_insert, nullptr), db, "Prepare xor insert statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        Entry entry;
+        bool create_new = (rng() % 100) >= 25;
+        if (create_new)
+        {
+            entry = {
+                (uint64_t)-1,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                0};
+        }
+        else
+        {
+            entry = entries[rng() % entries.size()]; // Reuse existing entries for warmup
+        }
+        sqlite3_bind_text(stmt_insert, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_insert, 2, entry.size);
+        int rc;
+        do
+        {
+            rc = sqlite3_step(stmt_insert);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "xor2 insert query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        sqlite3_reset(stmt_insert);
+        sqlite3_bind_text(stmt_select, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt_select, 2, entry.size);
+        do
+        {
+            rc = sqlite3_step(stmt_select);
+        } while (rc == SQLITE_BUSY);
+
+        if (!assert_sqlite_return_code(rc, db, "xor2 select query execution " + std::to_string(i)))
+        {
+            return_code = -1;
+            return;
+        }
+        sqlite3_reset(stmt_select);
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+        num_rows += 2;
+    };
+    if (config.num_batch > 0 && runs % config.num_batch != 0)
+    {
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    }
+
+    sqlite3_finalize(stmt_insert);
+    sqlite3_finalize(stmt_select);
+    sqlite3_close(db);
+
+    return_code = 0;
+    return;
+}
+
+uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
+{
+    uint64_t count = 0;
+    for (const auto &entry : entries)
+    {
+        if (entry.blockset_id == blockset_id)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string sql = "SELECT Block.ID, Block.Hash, Block.Size FROM Block JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID WHERE BlocksetEntry.BlocksetID = ?;";
+    sqlite3_stmt *stmt;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr), db, "Prepare join statement"))
+    {
+        return_code = -1;
+        return;
+    }
+
+    uint64_t max_blockset = 0;
+    for (auto &entry : entries)
+    {
+        max_blockset = std::max(max_blockset, entry.blockset_id);
+    }
+
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    int i = 0;
+    while (true)
+    {
+        uint64_t blockset_id = (rng() % max_blockset) + 1;
+        uint64_t expected_count = blockset_count(blockset_id, entries);
+        sqlite3_bind_int64(stmt, 1, blockset_id);
+        uint64_t count = 0;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            // Process the row
+            auto found_id = sqlite3_column_int64(stmt, 0);
+            auto found_hash = std::string((const char *)sqlite3_column_text(stmt, 1));
+            auto found_size = (uint64_t)sqlite3_column_int64(stmt, 2);
+            auto entry = entries[found_id];
+            if (!assert_value_matches(entry.hash, found_hash, "Hash check"))
+            {
+                return_code = -1;
+                return;
+            }
+            if (!assert_value_matches(entry.size, found_size, "Size check"))
+            {
+                return_code = -1;
+                return;
+            }
+            if (!assert_value_matches(entry.blockset_id, blockset_id, "Blockset ID check"))
+            {
+                return_code = -1;
+                return;
+            }
+            count++;
+        }
+        sqlite3_reset(stmt);
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+        if (!assert_value_matches(expected_count, count, "Blockset count check"))
+        {
+            return_code = -1;
+            return;
+        }
+        num_rows += count;
+        i++;
+        if (num_rows > runs)
+            break;
+    };
+    if (config.num_batch > 0 && runs % config.num_batch != 0)
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    return_code = 0;
+    return;
+}
+
+void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
+{
+    std::mt19937 rng(~2025'07'08 + tid);
+    sqlite3 *db = open_connection(pragmas);
+    if (db == nullptr)
+    {
+        return_code = -1;
+        return;
+    }
+    std::string
+        sql_start_blockset = "INSERT INTO Blockset (Length) VALUES (0);",
+        sql_last_row = "SELECT last_insert_rowid();",
+        sql_check_block = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;",
+        sql_insert_block = "INSERT INTO Block (Hash, Size) VALUES (?, ?);",
+        sql_insert_blockset_entry = "INSERT OR IGNORE INTO BlocksetEntry (BlocksetID, BlockID) VALUES (?, ?);",
+        sql_update_blockset = "UPDATE Blockset SET Length = Length + 1 WHERE ID = ?;";
+    sqlite3_stmt *stmt_start_blockset, *stmt_last_row, *stmt_check_block, *stmt_insert_block, *stmt_insert_blockset_entry, *stmt_update_blockset;
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_start_blockset.c_str(), -1, &stmt_start_blockset, nullptr), db, "Prepare start blockset statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_last_row.c_str(), -1, &stmt_last_row, nullptr), db, "Prepare last row statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_check_block.c_str(), -1, &stmt_check_block, nullptr), db, "Prepare check block statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert_block.c_str(), -1, &stmt_insert_block, nullptr), db, "Prepare insert block statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_insert_blockset_entry.c_str(), -1, &stmt_insert_blockset_entry, nullptr), db, "Prepare insert blockset entry statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    if (!assert_sqlite_return_code(sqlite3_prepare_v2(db, sql_update_blockset.c_str(), -1, &stmt_update_blockset, nullptr), db, "Prepare update blockset statement"))
+    {
+        return_code = -1;
+        return;
+    }
+    uint64_t blockset_id = 0;
+
+    auto add_to_blockset_inner = [&](Entry &entry) -> int
+    {
+        int rc;
+        uint64_t found_id = 0;
+        while (true)
+        {
+            // Check if the block exists
+            sqlite3_bind_text(stmt_check_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+            sqlite3_bind_int64(stmt_check_block, 2, entry.size);
+            do
+            {
+                rc = sqlite3_step(stmt_check_block);
+            } while (rc == SQLITE_BUSY);
+            if (!assert_sqlite_return_code(rc, db, "check block"))
+                return -1;
+            found_id = rc == SQLITE_ROW ? sqlite3_column_int64(stmt_check_block, 0) : -1;
+            sqlite3_reset(stmt_check_block);
+
+            if (found_id == -1)
+            {
+                // Block does not exist, insert it
+                sqlite3_bind_text(stmt_insert_block, 1, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
+                sqlite3_bind_int64(stmt_insert_block, 2, entry.size);
+                rc = sqlite3_step(stmt_insert_block);
+                sqlite3_reset(stmt_insert_block);
+
+                if (rc == SQLITE_BUSY)
+                {
+                    // Statement is busy, the read values could be invalid
+                    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+                    continue;
+                }
+                if (!assert_sqlite_return_code(rc, db, "insert block"))
+                    return -1;
+                // Get the last inserted row ID
+                if (!assert_sqlite_return_code(sqlite3_step(stmt_last_row), db, "get last row ID"))
+                    return -1;
+                found_id = sqlite3_column_int64(stmt_last_row, 0);
+                sqlite3_reset(stmt_last_row);
+                num_rows += 2;
+            }
+            num_rows++;
+            break;
+        }
+
+        // Insert the blockset entry
+        sqlite3_bind_int64(stmt_insert_blockset_entry, 1, entry.blockset_id);
+        sqlite3_bind_int64(stmt_insert_blockset_entry, 2, found_id);
+        do
+        {
+            rc = sqlite3_step(stmt_insert_blockset_entry);
+        } while (rc == SQLITE_BUSY);
+
+        if (!assert_sqlite_return_code(rc, db, "insert blockset entry"))
+            return -1;
+        sqlite3_reset(stmt_insert_blockset_entry);
+        num_rows++;
+
+        // Increment the blockset
+        sqlite3_bind_int64(stmt_update_blockset, 1, entry.blockset_id);
+        do
+        {
+            rc = sqlite3_step(stmt_update_blockset);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "update blockset"))
+            return -1;
+        sqlite3_reset(stmt_update_blockset);
+        num_rows++;
+
+        return 0;
+    };
+
+    auto start_new_blockset = [&]() -> int
+    {
+        // Start a new blockset
+        int rc;
+        do
+        {
+            rc = sqlite3_step(stmt_start_blockset);
+        } while (rc == SQLITE_BUSY);
+        if (!assert_sqlite_return_code(rc, db, "insert blockset"))
+            return -1;
+        sqlite3_reset(stmt_start_blockset);
+        if (!assert_sqlite_return_code(sqlite3_step(stmt_last_row), db, "get last row ID"))
+            return -1;
+        blockset_id = sqlite3_column_int64(stmt_last_row, 0);
+        sqlite3_reset(stmt_last_row);
+        num_rows += 2;
+
+        return 0;
+    };
+
+    if (start_new_blockset() != 0)
+    {
+        return_code = -1;
+        return;
+    }
+    sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+    for (uint64_t i = 0; i < runs; i++)
+    {
+        Entry entry;
+        if ((rng() % 100) >= (100 - 5)) // 50% chance to create a new entry
+        {
+            entry = {
+                (uint64_t)-1,
+                random_hash_string(rng, 44),
+                rng() % 1000,
+                blockset_id};
+        }
+        else
+        {
+            entry = entries[i % entries.size()]; // Reuse existing entries for warmup
+        }
+
+        if (add_to_blockset_inner(entry) != 0)
+        {
+            return_code = -1;
+            return;
+        }
+
+        // With some probability, create a new blockset
+        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        {
+            if (start_new_blockset() != 0)
+            {
+                return_code = -1;
+                return;
+            }
+        }
+        if (config.num_batch > 0 && (i + 1) % config.num_batch == 0)
+        {
+            sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+            sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
+        }
+    }
+    if (config.num_batch > 0 && runs % config.num_batch != 0)
+        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    sqlite3_finalize(stmt_start_blockset);
+    sqlite3_finalize(stmt_last_row);
+    sqlite3_finalize(stmt_check_block);
+    sqlite3_finalize(stmt_insert_block);
+    sqlite3_finalize(stmt_insert_blockset_entry);
+    sqlite3_finalize(stmt_update_blockset);
+    sqlite3_close(db);
+
+    return_code = 0;
+    return;
+}
+
+int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config &, const std::vector<Entry> &, int &, int &)> f, std::vector<Entry> &entries, Config &config, std::string report_name, std::vector<std::string> &pragmas)
+{
+    // Copy the backed up database
+    auto copy_db = []()
+    {
+        std::filesystem::remove(DBPATH + "-shm");
+        std::filesystem::remove(DBPATH + "-wal");
+        std::filesystem::copy_file(DBPATH + ".backup", DBPATH, std::filesystem::copy_options::overwrite_existing);
+        sqlite3 *db;
+        sqlite3_open(DBPATH.c_str(), &db);
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+        sqlite3_wal_checkpoint(db, nullptr);
+        sqlite3_close(db);
+    };
+    copy_db();
+
+    int return_code = 0;
+    int num_rows = 0;
+    std::vector<std::thread> threads;
+
+    f(0, config.num_warmup, pragmas, config, entries, return_code, num_rows);
+    if (return_code != 0)
+        return -1;
+
+    copy_db();
+
+    num_rows = 0;
+    auto begin = std::chrono::high_resolution_clock::now();
+    f(0, config.num_repetitions, pragmas, config, entries, return_code, num_rows);
+    auto end = std::chrono::high_resolution_clock::now();
+    if (return_code != 0)
+        return -1;
+
+    std::cout << "Batching " << report_name << " took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " ms ("
+              << float(num_rows) / std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << " kop/s)" << std::endl;
+
+    if (!std::filesystem::exists("reports"))
+        std::filesystem::create_directory("reports");
+
+    bool emit_header = !std::filesystem::exists("reports/batching_" + report_name + ".csv");
+    std::ofstream report_file("reports/batching_" + report_name + ".csv", std::ios::app);
+    if (emit_header)
+    {
+        report_file << "num_entries,num_warmup,num_repetitions,num_batch,rows,time_us,kop_s\n";
+    }
+
+    report_file << config.num_entries << ","
+                << config.num_warmup << ","
+                << config.num_repetitions << ","
+                << config.num_batch << ","
+                << num_rows << ","
+                << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << ","
+                << float(num_rows) / (float(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000) << "\n";
+
+    return 0;
+}
+
+int measure_all(std::vector<Entry> &entries, Config &config, std::string &report_name, std::vector<std::string> &pragmas)
+{
+
+    if (measure(measure_insert, entries, config, "insert", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_select, entries, config, "select", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_xor1, entries, config, "xor1", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_xor2, entries, config, "xor2", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_join, entries, config, "join", pragmas) != 0)
+        return -1;
+
+    if (measure(measure_new_blockset, entries, config, "new_blockset", pragmas) != 0)
+        return -1;
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    auto config = parse_args(argc, argv);
+
+    std::vector<std::tuple<std::string, std::vector<std::string>>> pragmas_to_run = {
+        // {"normal", {}},
+        // {"synch_off", {"PRAGMA synchronous = OFF;"}},
+        // {"synch_normal", {"PRAGMA synchronous = NORMAL;"}},
+        // {"synch_full", {"PRAGMA synchronous = FULL;"}},
+        // {"synch_extra", {"PRAGMA synchronous = EXTRA;"}},
+        // {"temp_store_memory", {"PRAGMA temp_store = MEMORY;"}},
+        // {"temp_store_default", {"PRAGMA temp_store = DEFAULT;"}},
+        // {"journal_delete", {"PRAGMA journal_mode = DELETE;"}},
+        // {"journal_memory", {"PRAGMA journal_mode = MEMORY;"}},
+        // {"journal_wal", {"PRAGMA journal_mode = WAL;"}},
+        // {"journal_off", {"PRAGMA journal_mode = OFF;"}},
+        // {"cache_size_2M", {"PRAGMA cache_size = -2000;"}},
+        // {"cache_size_4M", {"PRAGMA cache_size = -4000;"}},
+        // {"cache_size_8M", {"PRAGMA cache_size = -8000;"}},
+        // {"cache_size_16M", {"PRAGMA cache_size = -16000;"}},
+        // {"cache_size_32M", {"PRAGMA cache_size = -32000;"}},
+        // {"cache_size_64M", {"PRAGMA cache_size = -64000;"}},
+        // {"cache_size_128M", {"PRAGMA cache_size = -128000;"}},
+        // {"cache_size_256M", {"PRAGMA cache_size = -256000;"}},
+        // {"cache_size_512M", {"PRAGMA cache_size = -512000;"}},
+        // {"mmap_size_2M", {"PRAGMA mmap_size = 2000000;"}},
+        // {"mmap_size_4M", {"PRAGMA mmap_size = 4000000;"}},
+        // {"mmap_size_8M", {"PRAGMA mmap_size = 8000000;"}},
+        // {"mmap_size_16M", {"PRAGMA mmap_size = 16000000;"}},
+        // {"mmap_size_32M", {"PRAGMA mmap_size = 32000000;"}},
+        // {"mmap_size_64M", {"PRAGMA mmap_size = 64000000;"}},
+        // {"mmap_size_128M", {"PRAGMA mmap_size = 128000000;"}},
+        // {"mmap_size_256M", {"PRAGMA mmap_size = 256000000;"}},
+        // {"mmap_size_512M", {"PRAGMA mmap_size = 512000000;"}},
+        // {"threads_0", {"PRAGMA threads = 0;"}},
+        // {"threads_1", {"PRAGMA threads = 1;"}},
+        // {"threads_2", {"PRAGMA threads = 2;"}},
+        // {"threads_4", {"PRAGMA threads = 4;"}},
+        // {"threads_8", {"PRAGMA threads = 8;"}},
+        // {"threads_16", {"PRAGMA threads = 16;"}},
+        // {"threads_32", {"PRAGMA threads = 32;"}},
+        //{"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA journal_mode = WAL;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;", "PRAGMA busy_timeout = 1000;"}}
+        {"combination", {"PRAGMA synchronous = NORMAL;", "PRAGMA temp_store = MEMORY;", "PRAGMA cache_size = -64000;", "PRAGMA mmap_size = 64000000;", "PRAGMA threads = 8;"}}
+        //
+    };
+
+    std::vector<std::string> table_queries = {
+        CREATE_BLOCKSET_TABLE,
+        CREATE_BLOCKSETENTRY_TABLE,
+        CREATE_BLOCK_TABLE};
+
+    auto db = setup_database(table_queries);
+
+    sqlite3_exec(db, "CREATE INDEX BlockHashSize ON Block(Hash, Size);", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX BlocksetEntryBlocksetID ON BlocksetEntry(BlocksetID);", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "CREATE INDEX BlocksetBlocksetID ON Blockset(ID);", nullptr, nullptr, nullptr);
+
+    std::vector<Entry> entries;
+    std::mt19937 rng(2025'07'08);
+    if (fill(db, rng, entries, config.num_entries) != 0)
+        return -1;
+    sqlite3_close(db);
+
+    std::filesystem::copy(DBPATH, DBPATH + ".backup", std::filesystem::copy_options::overwrite_existing);
+
+    for (auto &[report_name, pragmas] : pragmas_to_run)
+    {
+        int ret = measure_all(entries, config, report_name, pragmas);
+        if (ret != 0)
+        {
+            std::cerr << "Error during report name: " << report_name << std::endl;
+            return ret;
+        }
+    }
+
+    std::vector<std::string> files = {DBPATH, DBPATH + "-shm", DBPATH + "-wal", DBPATH + ".backup"};
+    for (const auto &f : files)
+    {
+        if (std::filesystem::exists(f))
+            std::filesystem::remove(f);
+    }
+
+    return 0;
+}
