@@ -7,6 +7,7 @@ namespace sqlite_bench
     public class SystemData : BenchmarkBase
     {
         private SQLiteConnection? m_connection;
+        private SQLiteCommand? m_command_insert;
         private SQLiteCommand? m_command_select;
 
         public SystemData() : base() { }
@@ -17,6 +18,14 @@ namespace sqlite_bench
             base.GlobalSetup();
             m_connection = new SQLiteConnection($"Data Source=benchmark.sqlite");
             m_connection.Open();
+
+            m_command_insert = m_connection.CreateCommand();
+            m_command_insert.CommandText = "INSERT INTO Block (ID, Hash, Size) VALUES (@id, @hash, @size)";
+            m_command_insert.Parameters.Add(new SQLiteParameter("@id", System.Data.DbType.Int64));
+            m_command_insert.Parameters.Add(new SQLiteParameter("@hash", System.Data.DbType.String));
+            m_command_insert.Parameters.Add(new SQLiteParameter("@size", System.Data.DbType.Int64));
+            m_command_insert.Prepare();
+
             m_command_select = m_connection.CreateCommand();
             m_command_select.CommandText = "SELECT ID FROM Block WHERE Hash = @hash AND Size = @size";
             m_command_select.Parameters.Add(new SQLiteParameter("@hash", System.Data.DbType.String));
@@ -27,10 +36,26 @@ namespace sqlite_bench
         [GlobalCleanup]
         public new void GlobalCleanup()
         {
+            m_command_insert?.Dispose();
             m_command_select?.Dispose();
             m_connection?.Close();
             m_connection?.Dispose();
             base.GlobalCleanup();
+        }
+
+        [Benchmark]
+        public override void Insert()
+        {
+            using var transaction = m_connection!.BeginTransaction();
+            m_command_insert!.Transaction = transaction;
+            foreach (var entry in EntriesToTest)
+            {
+                m_command_insert.Parameters["@id"].Value = entry.Id;
+                m_command_insert.Parameters["@hash"].Value = entry.Hash;
+                m_command_insert.Parameters["@size"].Value = entry.Size;
+                m_command_insert.ExecuteNonQuery();
+            }
+            transaction.Rollback();
         }
 
         [Benchmark]
@@ -54,6 +79,7 @@ namespace sqlite_bench
                 transaction.Rollback();
             }
         }
+
     }
 
 }

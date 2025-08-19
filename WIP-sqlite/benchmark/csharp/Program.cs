@@ -11,16 +11,34 @@ namespace sqlite_bench
         {
 #if DEBUG
             var sw = new Stopwatch();
-            var sysdata = new SystemData();
+            var bench = new SystemData();
             SystemData.NumEntries = 100_000;
             SystemData.NumRepetitions = 10_000;
-            sysdata.GlobalSetup();
-            sysdata.IterationSetup();
-            sw.Start();
-            sysdata.Select();
+            bench.GlobalSetup();
+
+            // Insert benchmark
+            // Warmup
+            bench.IterationSetupInsert();
+            bench.Insert();
+            // Run
+            bench.IterationSetupInsert();
+            sw.Restart();
+            bench.Insert();
             sw.Stop();
-            Console.WriteLine($"Elapsed time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-            sysdata.GlobalCleanup();
+            Console.WriteLine($"Insert time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+
+            // Select benchmark
+            // Warmup
+            bench.IterationSetupSelect();
+            bench.Select();
+            // Run
+            bench.IterationSetupSelect();
+            sw.Restart();
+            bench.Select();
+            sw.Stop();
+            Console.WriteLine($"Select time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+
+            bench.GlobalCleanup();
 #else
             BenchmarkRunner.Run<SystemData>();
 #endif

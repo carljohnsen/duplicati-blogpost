@@ -142,15 +142,31 @@ namespace sqlite_bench
                     File.Delete(file);
         }
 
+        [IterationSetup(Target = nameof(Insert))]
+        public void IterationSetupInsert()
+        {
+            for (int i = 0; i < NumRepetitions; i++)
+            {
+                var entry = new Entry
+                {
+                    Id = i + NumEntries,
+                    Hash = RandomString(),
+                    Size = m_random.Next(1, 1000),
+                    BlocksetId = 0
+                };
+                EntriesToTest[i] = entry;
+            }
+        }
+        public abstract void Insert();
+
         [IterationSetup(Target = nameof(Select))]
-        public void IterationSetup()
+        public void IterationSetupSelect()
         {
             for (int i = 0; i < NumRepetitions; i++)
                 EntriesToTest[i] = m_entries[m_random.Next(m_entries.Length)];
         }
         public abstract void Select();
 
-        // public abstract void Insert();
         // public abstract void Xor1();
         // public abstract void Xor2();
         // public abstract void Join();
