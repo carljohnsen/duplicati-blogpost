@@ -43,6 +43,7 @@ namespace sqlite_bench
 
         public void GlobalSetup()
         {
+            this.GlobalCleanup();
             using var con = new System.Data.SQLite.SQLiteConnection($"Data Source=benchmark.sqlite");
             con.Open();
             using var cmd = con.CreateCommand();
@@ -130,7 +131,15 @@ namespace sqlite_bench
 
         public void GlobalCleanup()
         {
-            File.Delete("benchmark.sqlite");
+            string[] files_to_delete = [
+                "benchmark.sqlite",
+                "benchmark.sqlite-shm",
+                "benchmark.sqlite-wal"
+            ];
+
+            foreach (var file in files_to_delete)
+                if (File.Exists(file))
+                    File.Delete(file);
         }
 
         [IterationSetup(Target = nameof(Select))]
