@@ -792,6 +792,24 @@ int measure(std::function<void(int, uint64_t, std::vector<std::string> &, Config
               << float(total_rows) / std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
               << " kop/s)" << std::endl;
 
+    if (!std::filesystem::exists("reports"))
+        std::filesystem::create_directory("reports");
+
+    bool emit_header = !std::filesystem::exists("reports/parallel_" + report_name + ".csv");
+    std::ofstream report_file("reports/parallel_" + report_name + ".csv", std::ios::app);
+    if (emit_header)
+    {
+        report_file << "num_entries,num_warmup,num_repetitions,num_threads,rows,time_ms,kop_s\n";
+    }
+
+    report_file << config.num_entries << ","
+                << config.num_warmup << ","
+                << config.num_repetitions << ","
+                << config.num_threads << ","
+                << total_rows << ","
+                << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << ","
+                << float(total_rows) / (float(std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()) / 1000) << "\n";
+
     return 0;
 }
 
