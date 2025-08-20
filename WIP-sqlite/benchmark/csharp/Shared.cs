@@ -167,7 +167,23 @@ namespace sqlite_bench
         }
         public abstract void Select();
 
-        // public abstract void Xor1();
+        [IterationSetup(Target = nameof(Xor1))]
+        public void IterationSetupXor1()
+        {
+            long new_id = NumEntries;
+            for (int i = 0; i < NumRepetitions; i++)
+                if (m_random.NextDouble() < 0.5)
+                    EntriesToTest[i] = m_entries[m_random.Next(m_entries.Length)];
+                else
+                    EntriesToTest[i] = new Entry
+                    {
+                        Id = new_id++,
+                        Hash = RandomString(),
+                        Size = m_random.Next(1, 1000),
+                        BlocksetId = 0
+                    };
+        }
+        public abstract void Xor1();
         // public abstract void Xor2();
         // public abstract void Join();
         // public abstract void NewBlockset();
