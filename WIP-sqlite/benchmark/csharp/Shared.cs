@@ -24,7 +24,7 @@ namespace sqlite_bench
         protected long m_next_blocksetid = 0;
         protected readonly Entry[] EntriesToTest = new Entry[NumRepetitions];
         protected readonly List<(long, long, long)> BlocksetToTest = [];
-        private static readonly Random m_random = new(2025_07_08);
+        protected static readonly Random m_random = new(2025_07_08);
         private readonly string[] pragmas = [
             "PRAGMA journal_mode = WAL;",
             "PRAGMA synchronous = NORMAL;",
@@ -174,7 +174,7 @@ namespace sqlite_bench
         }
         public abstract void Select();
 
-        [IterationSetup(Targets = new[] { nameof(Xor1), nameof(Xor2) })]
+        [IterationSetup(Targets = new[] { nameof(Xor1), nameof(Xor2), nameof(NewBlockset) })]
         public void IterationSetupXor()
         {
             long new_id = NumEntries;
@@ -207,6 +207,6 @@ namespace sqlite_bench
         }
         public abstract void Join();
 
-        // public abstract void NewBlockset();
+        public abstract void NewBlockset();
     }
 }

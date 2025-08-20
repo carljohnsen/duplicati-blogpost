@@ -11,6 +11,11 @@ namespace sqlite_bench
         private SQLiteCommand? m_command_select;
         private SQLiteCommand? m_command_xor2_insert;
         private SQLiteCommand? m_command_join;
+        private SQLiteCommand? m_command_blockset_start;
+        private SQLiteCommand? m_command_blockset_insert_block;
+        private SQLiteCommand? m_command_blockset_last_row;
+        private SQLiteCommand? m_command_blockset_entry_insert;
+        private SQLiteCommand? m_command_blockset_update;
 
         public SystemData() : base() { }
 
@@ -45,6 +50,31 @@ namespace sqlite_bench
             m_command_join.CommandText = "SELECT Block.ID, Block.Hash, Block.Size FROM Block JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID WHERE BlocksetEntry.BlocksetID = @blocksetid;";
             m_command_join.Parameters.Add(new SQLiteParameter("@blocksetid", System.Data.DbType.Int64));
             m_command_join.Prepare();
+
+            m_command_blockset_insert_block = m_connection.CreateCommand();
+            m_command_blockset_insert_block.CommandText = "INSERT INTO Block (Hash, Size) VALUES (@hash, @size);";
+            m_command_blockset_insert_block.Parameters.Add(new SQLiteParameter("@hash", System.Data.DbType.String));
+            m_command_blockset_insert_block.Parameters.Add(new SQLiteParameter("@size", System.Data.DbType.Int64));
+            m_command_blockset_insert_block.Prepare();
+
+            m_command_blockset_start = m_connection.CreateCommand();
+            m_command_blockset_start.CommandText = "INSERT INTO Blockset (Length) VALUES (0);";
+            m_command_blockset_start.Prepare();
+
+            m_command_blockset_last_row = m_connection.CreateCommand();
+            m_command_blockset_last_row.CommandText = "SELECT last_insert_rowid();";
+            m_command_blockset_last_row.Prepare();
+
+            m_command_blockset_entry_insert = m_connection.CreateCommand();
+            m_command_blockset_entry_insert.CommandText = "INSERT INTO BlocksetEntry (BlocksetID, BlockID) VALUES (@blocksetid, @blockid);";
+            m_command_blockset_entry_insert.Parameters.Add(new SQLiteParameter("@blocksetid", System.Data.DbType.Int64));
+            m_command_blockset_entry_insert.Parameters.Add(new SQLiteParameter("@blockid", System.Data.DbType.Int64));
+            m_command_blockset_entry_insert.Prepare();
+
+            m_command_blockset_update = m_connection.CreateCommand();
+            m_command_blockset_update.CommandText = "UPDATE Blockset SET Length = Length + 1 WHERE ID = @id;";
+            m_command_blockset_update.Parameters.Add(new SQLiteParameter("@id", System.Data.DbType.Int64));
+            m_command_blockset_update.Prepare();
         }
 
         [GlobalCleanup]
@@ -53,6 +83,11 @@ namespace sqlite_bench
             m_command_insert?.Dispose();
             m_command_select?.Dispose();
             m_command_xor2_insert?.Dispose();
+            m_command_join?.Dispose();
+            m_command_blockset_start?.Dispose();
+            m_command_blockset_last_row?.Dispose();
+            m_command_blockset_entry_insert?.Dispose();
+            m_command_blockset_update?.Dispose();
             m_connection?.Close();
             m_connection?.Dispose();
             base.GlobalCleanup();
@@ -164,6 +199,53 @@ namespace sqlite_bench
                 if (totalSize != size)
                     throw new Exception($"Blockset {blocksetId} expected {size} total size, found {totalSize}");
             }
+            transaction.Rollback();
+        }
+
+        [Benchmark]
+        public override void NewBlockset()
+        {
+            using var transaction = m_connection!.BeginTransaction();
+            m_command_select!.Transaction = transaction;
+            m_command_blockset_insert_block!.Transaction = transaction;
+            m_command_blockset_start!.Transaction = transaction;
+            m_command_blockset_last_row!.Transaction = transaction;
+            m_command_blockset_entry_insert!.Transaction = transaction;
+            m_command_blockset_update!.Transaction = transaction;
+
+            m_command_blockset_start.ExecuteNonQuery();
+            long newBlocksetId = (long)m_command_blockset_last_row!.ExecuteScalar();
+            foreach (var entry in EntriesToTest)
+            {
+                m_command_select.Parameters["@hash"].Value = entry.Hash;
+                m_command_select.Parameters["@size"].Value = entry.Size;
+                long? bid = (long?)m_command_select.ExecuteScalar();
+                if (bid == null)
+                {
+                    m_command_blockset_insert_block.Parameters["@hash"].Value = entry.Hash;
+                    m_command_blockset_insert_block.Parameters["@size"].Value = entry.Size;
+                    m_command_blockset_insert_block.ExecuteNonQuery();
+                    bid = (long?)m_command_blockset_last_row!.ExecuteScalar();
+                }
+                else if (bid != entry.Id)
+                {
+                    throw new Exception($"Failed to insert/lookup entry {entry.Id}, found {bid}");
+                }
+
+                m_command_blockset_entry_insert.Parameters["@blocksetid"].Value = newBlocksetId;
+                m_command_blockset_entry_insert.Parameters["@blockid"].Value = bid;
+                m_command_blockset_entry_insert.ExecuteNonQuery();
+
+                m_command_blockset_update.Parameters["@id"].Value = newBlocksetId;
+                m_command_blockset_update.ExecuteNonQuery();
+
+                if (m_random.NextDouble() < 0.05)
+                {
+                    m_command_blockset_start.ExecuteNonQuery();
+                    newBlocksetId = (long)m_command_blockset_last_row!.ExecuteScalar();
+                }
+            }
+
             transaction.Rollback();
         }
 
