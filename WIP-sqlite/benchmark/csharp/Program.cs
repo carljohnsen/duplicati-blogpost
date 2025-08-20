@@ -11,7 +11,7 @@ namespace sqlite_bench
         {
 #if DEBUG
             var sw = new Stopwatch();
-            var bench = new DuplicatiSQLite();
+            var bench = new MSSqlite();
             bench.NumEntries = 100_000;
             bench.NumRepetitions = 10_000;
             bench.GlobalSetup();
@@ -39,7 +39,7 @@ namespace sqlite_bench
 
             bench.GlobalCleanup();
 #else
-            BenchmarkRunner.Run<DuplicatiSQLite>();
+            BenchmarkRunner.Run<MSSqlite>();
 #endif
         }
     }
