@@ -7,7 +7,7 @@ using Duplicati.Library.Utility;
 namespace sqlite_bench
 {
 
-    public class DuplicatiSQLite : BenchmarkBase
+    public class DuplicatiSQLite : BenchmarkSync
     {
         private IDbConnection? m_connection;
         private IDbCommand? m_command_insert;

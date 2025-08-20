@@ -17,7 +17,7 @@ namespace sqlite_bench
 
     public class RowsPerSecondColumn : IColumn
     {
-        public string Id => nameof(RowsPerSecondColumn);
+        public string Id => "RowsPerSecondColumn";
         public string ColumnName => "K rows/sec (avg)";
         public bool AlwaysShow => true;
         public ColumnCategory Category => ColumnCategory.Custom;
@@ -57,7 +57,7 @@ namespace sqlite_bench
 
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public abstract class BenchmarkBase()
+    public class BenchmarkBase()
     {
         [Params(1_000, 10_000)]//, 100_000)]
         public long NumEntries { get; set; } = 100_000;
@@ -197,7 +197,7 @@ namespace sqlite_bench
                     File.Delete(file);
         }
 
-        [IterationSetup(Target = nameof(Insert))]
+        [IterationSetup(Target = "Insert")]
         public void IterationSetupInsert()
         {
             for (int i = 0; i < NumRepetitions; i++)
@@ -212,17 +212,15 @@ namespace sqlite_bench
                 EntriesToTest[i] = entry;
             }
         }
-        public abstract void Insert();
 
-        [IterationSetup(Target = nameof(Select))]
+        [IterationSetup(Target = "Select")]
         public void IterationSetupSelect()
         {
             for (int i = 0; i < NumRepetitions; i++)
                 EntriesToTest[i] = m_entries[m_random.Next(m_entries.Length)];
         }
-        public abstract void Select();
 
-        [IterationSetup(Targets = new[] { nameof(Xor1), nameof(Xor2), nameof(NewBlockset) })]
+        [IterationSetup(Targets = new[] { "Xor1", "Xor2", "NewBlockset" })]
         public void IterationSetupXor()
         {
             long new_id = NumEntries;
@@ -238,10 +236,8 @@ namespace sqlite_bench
                         BlocksetId = 0
                     };
         }
-        public abstract void Xor1();
-        public abstract void Xor2();
 
-        [IterationSetup(Target = nameof(Join))]
+        [IterationSetup(Target = "Join")]
         public void IterationSetupJoin()
         {
             BlocksetToTest.Clear();
@@ -253,8 +249,26 @@ namespace sqlite_bench
                 total_blockset_count += m_blocksets[blockset_id].Item2;
             }
         }
-        public abstract void Join();
 
+    }
+
+    public abstract class BenchmarkSync : BenchmarkBase
+    {
+        public abstract void Insert();
+        public abstract void Select();
+        public abstract void Xor1();
+        public abstract void Xor2();
+        public abstract void Join();
         public abstract void NewBlockset();
+    }
+
+    public abstract class BenchmarkAsync : BenchmarkBase
+    {
+        public abstract Task Insert();
+        public abstract Task Select();
+        public abstract Task Xor1();
+        public abstract Task Xor2();
+        public abstract Task Join();
+        public abstract Task NewBlockset();
     }
 }

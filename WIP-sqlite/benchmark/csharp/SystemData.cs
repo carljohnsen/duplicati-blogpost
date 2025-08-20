@@ -4,7 +4,7 @@ using BenchmarkDotNet.Attributes;
 namespace sqlite_bench
 {
 
-    public class SystemData : BenchmarkBase
+    public class SystemData : BenchmarkSync
     {
         private SQLiteConnection? m_connection;
         private SQLiteCommand? m_command_insert;
