@@ -16,49 +16,24 @@ namespace sqlite_bench
             SystemData.NumRepetitions = 10_000;
             bench.GlobalSetup();
 
-            // Insert benchmark
-            // Warmup
-            bench.IterationSetupInsert();
-            bench.Insert();
-            // Run
-            bench.IterationSetupInsert();
-            sw.Restart();
-            bench.Insert();
-            sw.Stop();
-            Console.WriteLine($"Insert time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-
-            // Select benchmark
-            // Warmup
-            bench.IterationSetupSelect();
-            bench.Select();
-            // Run
-            bench.IterationSetupSelect();
-            sw.Restart();
-            bench.Select();
-            sw.Stop();
-            Console.WriteLine($"Select time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-
-            // XOR1 benchmark
-            // Warmup
-            bench.IterationSetupXor();
-            bench.Xor1();
-            // Run
-            bench.IterationSetupXor();
-            sw.Restart();
-            bench.Xor1();
-            sw.Stop();
-            Console.WriteLine($"XOR1 time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-
-            // XOR2 benchmark
-            // Warmup
-            bench.IterationSetupXor();
-            bench.Xor2();
-            // Run
-            bench.IterationSetupXor();
-            sw.Restart();
-            bench.Xor2();
-            sw.Stop();
-            Console.WriteLine($"XOR2 time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+            (string, Action, Action)[] benchmarks = [
+                ("Insert", bench.IterationSetupInsert, bench.Insert),
+                ("Select", bench.IterationSetupSelect, bench.Select),
+                ("XOR1", bench.IterationSetupXor, bench.Xor1),
+                ("XOR2", bench.IterationSetupXor, bench.Xor2)
+            ];
+            foreach (var (name, setup, run) in benchmarks)
+            {
+                // Warmup
+                setup();
+                run();
+                // Run
+                setup();
+                sw.Restart();
+                run();
+                sw.Stop();
+                Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+            }
 
             bench.GlobalCleanup();
 #else
