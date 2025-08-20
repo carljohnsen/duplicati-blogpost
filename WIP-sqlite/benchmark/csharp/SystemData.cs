@@ -10,6 +10,7 @@ namespace sqlite_bench
         private SQLiteCommand? m_command_insert;
         private SQLiteCommand? m_command_select;
         private SQLiteCommand? m_command_xor2_insert;
+        private SQLiteCommand? m_command_join;
 
         public SystemData() : base() { }
 
@@ -38,6 +39,12 @@ namespace sqlite_bench
             m_command_xor2_insert.Parameters.Add(new SQLiteParameter("@id", System.Data.DbType.Int64));
             m_command_xor2_insert.Parameters.Add(new SQLiteParameter("@hash", System.Data.DbType.String));
             m_command_xor2_insert.Parameters.Add(new SQLiteParameter("@size", System.Data.DbType.Int64));
+            m_command_xor2_insert.Prepare();
+
+            m_command_join = m_connection.CreateCommand();
+            m_command_join.CommandText = "SELECT Block.ID, Block.Hash, Block.Size FROM Block JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID WHERE BlocksetEntry.BlocksetID = @blocksetid;";
+            m_command_join.Parameters.Add(new SQLiteParameter("@blocksetid", System.Data.DbType.Int64));
+            m_command_join.Prepare();
         }
 
         [GlobalCleanup]
@@ -114,6 +121,7 @@ namespace sqlite_bench
             transaction.Rollback();
         }
 
+        [Benchmark]
         public override void Xor2()
         {
             using var transaction = m_connection!.BeginTransaction();
@@ -131,6 +139,30 @@ namespace sqlite_bench
                 var id = (long?)m_command_select.ExecuteScalar();
                 if (id != entry.Id)
                     throw new Exception($"Failed to select entry {entry.Id}");
+            }
+            transaction.Rollback();
+        }
+
+        [Benchmark]
+        public override void Join()
+        {
+            using var transaction = m_connection!.BeginTransaction();
+            m_command_join!.Transaction = transaction;
+            foreach (var (blocksetId, count, size) in BlocksetToTest)
+            {
+                m_command_join.Parameters["@blocksetid"].Value = blocksetId;
+                using var reader = m_command_join.ExecuteReader();
+                long totalSize = 0;
+                long totalCount = 0;
+                while (reader.Read())
+                {
+                    totalCount++;
+                    totalSize += reader.GetInt64(2); // Size column
+                }
+                if (totalCount != count)
+                    throw new Exception($"Blockset {blocksetId} expected {count} entries, found {totalCount}");
+                if (totalSize != size)
+                    throw new Exception($"Blockset {blocksetId} expected {size} total size, found {totalSize}");
             }
             transaction.Rollback();
         }

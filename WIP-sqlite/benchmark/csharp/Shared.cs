@@ -21,6 +21,7 @@ namespace sqlite_bench
 
         private readonly Entry[] m_entries = new Entry[NumEntries];
         protected readonly Entry[] EntriesToTest = new Entry[NumRepetitions];
+        protected readonly List<(long, long, long)> BlocksetToTest = [];
         private static readonly Random m_random = new(2025_07_08);
         private readonly string[] pragmas = [
             "PRAGMA journal_mode = WAL;",
@@ -185,7 +186,23 @@ namespace sqlite_bench
         }
         public abstract void Xor1();
         public abstract void Xor2();
-        // public abstract void Join();
+
+        public void IterationSetupJoin()
+        {
+            BlocksetToTest.Clear();
+            int max_blockset_id = (int)m_entries.Max(x => x.BlocksetId) + 1;
+            long total_blockset_count = 0;
+            while (total_blockset_count < NumRepetitions)
+            {
+                long blockset_id = m_random.Next(0, max_blockset_id);
+                long blockset_count = m_entries.Where(x => x.BlocksetId == blockset_id).LongCount();
+                long total_size = m_entries.Where(x => x.BlocksetId == blockset_id).Sum(x => x.Size);
+                BlocksetToTest.Add((blockset_id, blockset_count, total_size));
+                total_blockset_count += blockset_count;
+            }
+        }
+        public abstract void Join();
+
         // public abstract void NewBlockset();
     }
 }

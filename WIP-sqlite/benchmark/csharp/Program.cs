@@ -20,7 +20,8 @@ namespace sqlite_bench
                 ("Insert", bench.IterationSetupInsert, bench.Insert),
                 ("Select", bench.IterationSetupSelect, bench.Select),
                 ("XOR1", bench.IterationSetupXor, bench.Xor1),
-                ("XOR2", bench.IterationSetupXor, bench.Xor2)
+                ("XOR2", bench.IterationSetupXor, bench.Xor2),
+                ("Join", bench.IterationSetupJoin, bench.Join)
             ];
             foreach (var (name, setup, run) in benchmarks)
             {
