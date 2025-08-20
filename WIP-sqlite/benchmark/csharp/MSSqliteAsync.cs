@@ -110,9 +110,9 @@ namespace sqlite_bench
                 m_command_insert.Parameters["@id"].Value = entry.Id;
                 m_command_insert.Parameters["@hash"].Value = entry.Hash;
                 m_command_insert.Parameters["@size"].Value = entry.Size;
-                await m_command_insert.ExecuteNonQueryAsync();
+                await m_command_insert.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -126,14 +126,14 @@ namespace sqlite_bench
                 {
                     m_command_select.Parameters["@hash"].Value = entry.Hash;
                     m_command_select.Parameters["@size"].Value = entry.Size;
-                    var id = await m_command_select.ExecuteScalarAsync();
+                    var id = await m_command_select.ExecuteScalarAsync().ConfigureAwait(false);
                     if (id == null || (id is long longId && longId != entry.Id))
                         throw new Exception($"Failed to select entry {entry.Id}");
                 }
             }
             finally
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync().ConfigureAwait(false);
             }
         }
 
@@ -147,20 +147,20 @@ namespace sqlite_bench
             {
                 m_command_select.Parameters["@hash"].Value = entry.Hash;
                 m_command_select.Parameters["@size"].Value = entry.Size;
-                object? id = await m_command_select.ExecuteScalarAsync();
+                object? id = await m_command_select.ExecuteScalarAsync().ConfigureAwait(false);
                 if (id == null)
                 {
                     m_command_insert.Parameters["@id"].Value = entry.Id;
                     m_command_insert.Parameters["@hash"].Value = entry.Hash;
                     m_command_insert.Parameters["@size"].Value = entry.Size;
-                    await m_command_insert.ExecuteNonQueryAsync();
+                    await m_command_insert.ExecuteNonQueryAsync().ConfigureAwait(false);
                 }
                 else if (id is long longId && longId != entry.Id)
                 {
                     throw new Exception($"Failed to insert entry {entry.Id}, found {longId}");
                 }
             }
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -174,15 +174,15 @@ namespace sqlite_bench
                 m_command_xor2_insert.Parameters["@id"].Value = entry.Id;
                 m_command_xor2_insert.Parameters["@hash"].Value = entry.Hash;
                 m_command_xor2_insert.Parameters["@size"].Value = entry.Size;
-                await m_command_xor2_insert.ExecuteNonQueryAsync();
+                await m_command_xor2_insert.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 m_command_select.Parameters["@hash"].Value = entry.Hash;
                 m_command_select.Parameters["@size"].Value = entry.Size;
-                var id = (long?)await m_command_select.ExecuteScalarAsync();
+                var id = (long?)await m_command_select.ExecuteScalarAsync().ConfigureAwait(false);
                 if (id != entry.Id)
                     throw new Exception($"Failed to select entry {entry.Id}");
             }
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -193,10 +193,10 @@ namespace sqlite_bench
             foreach (var (blocksetId, count, size) in BlocksetToTest)
             {
                 m_command_join.Parameters["@blocksetid"].Value = blocksetId;
-                using var reader = await m_command_join.ExecuteReaderAsync();
+                using var reader = await m_command_join.ExecuteReaderAsync().ConfigureAwait(false);
                 long totalSize = 0;
                 long totalCount = 0;
-                while (await reader.ReadAsync())
+                while (await reader.ReadAsync().ConfigureAwait(false))
                 {
                     totalCount++;
                     totalSize += reader.GetInt64(2); // Size column
@@ -206,7 +206,7 @@ namespace sqlite_bench
                 if (totalSize != size)
                     throw new Exception($"Blockset {blocksetId} expected {size} total size, found {totalSize}");
             }
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -220,19 +220,19 @@ namespace sqlite_bench
             m_command_blockset_entry_insert!.Transaction = transaction;
             m_command_blockset_update!.Transaction = transaction;
 
-            await m_command_blockset_start.ExecuteNonQueryAsync();
-            long? newBlocksetId = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync();
+            await m_command_blockset_start.ExecuteNonQueryAsync().ConfigureAwait(false);
+            long? newBlocksetId = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync().ConfigureAwait(false);
             foreach (var entry in EntriesToTest)
             {
                 m_command_select.Parameters["@hash"].Value = entry.Hash;
                 m_command_select.Parameters["@size"].Value = entry.Size;
-                long? bid = (long?)await m_command_select.ExecuteScalarAsync();
+                long? bid = (long?)await m_command_select.ExecuteScalarAsync().ConfigureAwait(false);
                 if (bid == null)
                 {
                     m_command_blockset_insert_block.Parameters["@hash"].Value = entry.Hash;
                     m_command_blockset_insert_block.Parameters["@size"].Value = entry.Size;
-                    await m_command_blockset_insert_block.ExecuteNonQueryAsync();
-                    bid = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync();
+                    await m_command_blockset_insert_block.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    bid = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync().ConfigureAwait(false);
                 }
                 else if (bid != entry.Id)
                 {
@@ -241,19 +241,19 @@ namespace sqlite_bench
 
                 m_command_blockset_entry_insert.Parameters["@blocksetid"].Value = newBlocksetId;
                 m_command_blockset_entry_insert.Parameters["@blockid"].Value = bid;
-                await m_command_blockset_entry_insert.ExecuteNonQueryAsync();
+                await m_command_blockset_entry_insert.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 m_command_blockset_update.Parameters["@id"].Value = newBlocksetId;
-                await m_command_blockset_update.ExecuteNonQueryAsync();
+                await m_command_blockset_update.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 if (m_random.NextDouble() < 0.05)
                 {
-                    await m_command_blockset_start.ExecuteNonQueryAsync();
-                    newBlocksetId = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync();
+                    await m_command_blockset_start.ExecuteNonQueryAsync().ConfigureAwait(false);
+                    newBlocksetId = (long?)await m_command_blockset_last_row!.ExecuteScalarAsync().ConfigureAwait(false);
                 }
             }
 
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync().ConfigureAwait(false);
         }
 
     }
