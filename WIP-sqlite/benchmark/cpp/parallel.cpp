@@ -377,7 +377,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
 
 void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
-    int num_rows = 0;
+    num_rows = 0;
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
     if (db == nullptr)
@@ -470,7 +470,7 @@ uint64_t blockset_count(uint64_t blockset_id, const std::vector<Entry> &entries)
 
 void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
-    int num_rows = 0;
+    num_rows = 0;
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
     if (db == nullptr)
@@ -544,7 +544,7 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
 
 void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &pragmas, Config &config, const std::vector<Entry> &entries, int &return_code, int &num_rows)
 {
-    int num_rows = 0;
+    num_rows = 0;
     std::mt19937 rng(~2025'07'08 + tid);
     sqlite3 *db = open_connection(pragmas);
     if (db == nullptr)
