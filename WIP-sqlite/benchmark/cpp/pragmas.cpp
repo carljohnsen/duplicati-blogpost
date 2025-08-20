@@ -372,7 +372,8 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
     std::vector<uint64_t> times;
-    for (uint64_t i = 0; i < config.num_repetitions; i++)
+    uint64_t total_rows = 0;
+    while (total_rows < config.num_repetitions)
     {
         uint64_t blockset_id = (rng() % max_blockset) + 1;
         uint64_t expected_count = blockset_count(blockset_id, entries);
@@ -383,6 +384,7 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         auto end = std::chrono::high_resolution_clock::now();
 
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / expected_count);
+        total_rows += expected_count;
     }
 
     sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
