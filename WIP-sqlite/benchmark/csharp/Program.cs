@@ -11,8 +11,8 @@ namespace sqlite_bench
         {
 #if DEBUG
             var sw = new Stopwatch();
-            SystemData.NumEntries = 100_000;
-            SystemData.NumRepetitions = 10_000;
+            BenchmarkBase.NumEntries = 100_000;
+            BenchmarkBase.NumRepetitions = 10_000;
             var bench = new SystemData();
             bench.GlobalSetup();
 
