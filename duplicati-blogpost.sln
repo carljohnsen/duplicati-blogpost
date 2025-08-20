@@ -19,7 +19,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "runner", "25-03-24-5728-res
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WIP-sqlite", "WIP-sqlite", "{B15BD0A2-F818-49A0-9AA7-5B4FB429EE8F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sqlite_bench", "WIP-sqlite\benchmark\sqlite_bench.csproj", "{E4E85592-E035-48F3-A503-D75290659C50}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sqlite_bench", "WIP-sqlite\benchmark\csharp\sqlite_bench.csproj", "{E4E85592-E035-48F3-A503-D75290659C50}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
