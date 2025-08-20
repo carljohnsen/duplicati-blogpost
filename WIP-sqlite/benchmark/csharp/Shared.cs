@@ -19,7 +19,9 @@ namespace sqlite_bench
         [Params(1_000, 10_000)]
         public static long NumRepetitions = 10_000;
 
+        private readonly List<(long, long, long)> m_blocksets = [];
         private readonly Entry[] m_entries = new Entry[NumEntries];
+        protected long m_next_blocksetid = 0;
         protected readonly Entry[] EntriesToTest = new Entry[NumRepetitions];
         protected readonly List<(long, long, long)> BlocksetToTest = [];
         private static readonly Random m_random = new(2025_07_08);
@@ -88,7 +90,7 @@ namespace sqlite_bench
             cmd_blockset_entry.Prepare();
             cmd_block.Prepare();
 
-            long blockset_id = 0, blockset_count = 0;
+            long blockset_count = 0, blockset_size = 0;
             for (int i = 0; i < NumEntries; i++)
             {
                 var entry = new Entry
@@ -96,11 +98,12 @@ namespace sqlite_bench
                     Id = i,
                     Hash = RandomString(),
                     Size = m_random.Next(1, 1000),
-                    BlocksetId = blockset_id
+                    BlocksetId = m_next_blocksetid
                 };
                 m_entries[i] = entry;
                 blockset_count++;
-                cmd_blockset_entry.Parameters["@blocksetid"].Value = blockset_id;
+                blockset_size += entry.Size;
+                cmd_blockset_entry.Parameters["@blocksetid"].Value = m_next_blocksetid;
                 cmd_blockset_entry.Parameters["@blockid"].Value = entry.Id;
                 cmd_blockset_entry.ExecuteNonQuery();
 
@@ -111,19 +114,22 @@ namespace sqlite_bench
 
                 if (m_random.NextDouble() < 0.05)
                 {
-                    cmd_blockset.Parameters["@id"].Value = blockset_id;
+                    m_blocksets.Add((m_next_blocksetid, blockset_count, blockset_size));
+                    cmd_blockset.Parameters["@id"].Value = m_next_blocksetid;
                     cmd_blockset.Parameters["@length"].Value = blockset_count;
                     cmd_blockset.ExecuteNonQuery();
-                    blockset_id++;
+                    m_next_blocksetid++;
                     blockset_count = 0;
+                    blockset_size = 0;
                 }
             }
 
             if (blockset_count > 0)
             {
-                cmd_blockset.Parameters["@id"].Value = blockset_id;
+                cmd_blockset.Parameters["@id"].Value = m_next_blocksetid;
                 cmd_blockset.Parameters["@length"].Value = blockset_count;
                 cmd_blockset.ExecuteNonQuery();
+                m_next_blocksetid++;
             }
             cmd.CommandText = "PRAGMA optimize;";
             cmd.ExecuteNonQuery();
@@ -187,18 +193,16 @@ namespace sqlite_bench
         public abstract void Xor1();
         public abstract void Xor2();
 
+        [IterationSetup(Target = nameof(Join))]
         public void IterationSetupJoin()
         {
             BlocksetToTest.Clear();
-            int max_blockset_id = (int)m_entries.Max(x => x.BlocksetId) + 1;
             long total_blockset_count = 0;
             while (total_blockset_count < NumRepetitions)
             {
-                long blockset_id = m_random.Next(0, max_blockset_id);
-                long blockset_count = m_entries.Where(x => x.BlocksetId == blockset_id).LongCount();
-                long total_size = m_entries.Where(x => x.BlocksetId == blockset_id).Sum(x => x.Size);
-                BlocksetToTest.Add((blockset_id, blockset_count, total_size));
-                total_blockset_count += blockset_count;
+                int blockset_id = m_random.Next(0, (int)m_next_blocksetid);
+                BlocksetToTest.Add(m_blocksets[blockset_id]);
+                total_blockset_count += m_blocksets[blockset_id].Item2;
             }
         }
         public abstract void Join();
