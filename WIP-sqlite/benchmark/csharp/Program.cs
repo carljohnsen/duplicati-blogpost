@@ -11,35 +11,99 @@ namespace sqlite_bench
         {
 #if DEBUG
             var sw = new Stopwatch();
-            var bench = new MSSqlite();
-            bench.NumEntries = 100_000;
-            bench.NumRepetitions = 10_000;
-            bench.GlobalSetup();
-
-            (string, Action, Action)[] benchmarks = [
-                ("Insert", bench.IterationSetupInsert, bench.Insert),
-                ("Select", bench.IterationSetupSelect, bench.Select),
-                ("XOR1", bench.IterationSetupXor, bench.Xor1),
-                ("XOR2", bench.IterationSetupXor, bench.Xor2),
-                ("Join", bench.IterationSetupJoin, bench.Join),
-                ("NewBlockset", bench.IterationSetupXor, bench.NewBlockset),
+            Type[] backends = [
+                //typeof(DuplicatiSQLite),
+                typeof(SystemData),
+                //typeof(MSSqlite),
+                //typeof(MSSqliteAsync),
             ];
-            foreach (var (name, setup, run) in benchmarks)
+            foreach (var backend in backends)
             {
-                // Warmup
-                setup();
-                run();
-                // Run
-                setup();
-                sw.Restart();
-                run();
-                sw.Stop();
-                Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-            }
+                BenchmarkBase? bench_base = (BenchmarkBase?)Activator.CreateInstance(backend);
+                if (bench_base == null)
+                    throw new InvalidOperationException($"Failed to create instance of {backend}");
+                bench_base.NumEntries = 100_000;
+                bench_base.NumRepetitions = 10_000;
+                switch (bench_base)
+                {
+                    case BenchmarkSync bench_sync:
+                        sw.Restart();
+                        switch (bench_sync)
+                        {
+                            case DuplicatiSQLite duplicatiSQLite:
+                                duplicatiSQLite.GlobalSetup();
+                                break;
+                            case SystemData systemData:
+                                systemData.GlobalSetup();
+                                break;
+                            case MSSqlite mssqlite:
+                                mssqlite.GlobalSetup();
+                                break;
+                        }
+                        sw.Stop();
+                        Console.WriteLine($"GlobalSetup time: {sw.ElapsedMilliseconds} ms ({((double)bench_sync.NumEntries) / sw.ElapsedMilliseconds:.02} kops/s)");
 
-            bench.GlobalCleanup();
+                        (string, Action, Action)[] benchmarks_sync = [
+                            ("Insert", bench_sync.IterationSetupInsert, bench_sync.Insert),
+                            ("Select", bench_sync.IterationSetupSelect, bench_sync.Select),
+                            ("XOR1", bench_sync.IterationSetupXor, bench_sync.Xor1),
+                            ("XOR2", bench_sync.IterationSetupXor, bench_sync.Xor2),
+                            ("Join", bench_sync.IterationSetupJoin, bench_sync.Join),
+                            ("NewBlockset", bench_sync.IterationSetupXor, bench_sync.NewBlockset),
+                        ];
+                        foreach (var (name, setup, run) in benchmarks_sync)
+                        {
+                            // Warmup
+                            setup();
+                            run();
+                            // Run
+                            setup();
+                            sw.Restart();
+                            run();
+                            sw.Stop();
+                            Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_sync.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+                        }
+
+                        bench_sync.GlobalCleanup();
+                        break;
+                    case BenchmarkAsync bench_async:
+                        sw.Restart();
+                        switch (bench_async)
+                        {
+                            case MSSqliteAsync mssqliteasync:
+                                mssqliteasync.GlobalSetup();
+                                break;
+                        }
+                        sw.Stop();
+                        Console.WriteLine($"GlobalSetup time: {sw.ElapsedMilliseconds} ms ({((double)bench_async.NumEntries) / sw.ElapsedMilliseconds:.02} kops/s)");
+
+                        (string, Action, Func<Task>)[] benchmarks_async = [
+                            ("Insert", bench_async.IterationSetupInsert, bench_async.Insert),
+                            ("Select", bench_async.IterationSetupSelect, bench_async.Select),
+                            ("XOR1", bench_async.IterationSetupXor, bench_async.Xor1),
+                            ("XOR2", bench_async.IterationSetupXor, bench_async.Xor2),
+                            ("Join", bench_async.IterationSetupJoin, bench_async.Join),
+                            ("NewBlockset", bench_async.IterationSetupXor, bench_async.NewBlockset),
+                        ];
+                        foreach (var (name, setup, run) in benchmarks_async)
+                        {
+                            // Warmup
+                            setup();
+                            await run();
+                            // Run
+                            setup();
+                            sw.Restart();
+                            await run();
+                            sw.Stop();
+                            Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_async.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+                        }
+
+                        bench_async.GlobalCleanup();
+                        break;
+                }
+            }
 #else
-            BenchmarkRunner.Run<MSSqlite>();
+            BenchmarkRunner.Run<MSSqliteAsync>();
 #endif
         }
     }
