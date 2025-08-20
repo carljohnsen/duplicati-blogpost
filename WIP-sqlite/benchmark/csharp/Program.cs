@@ -19,6 +19,8 @@ namespace sqlite_bench
             ];
             foreach (var backend in backends)
             {
+                Console.WriteLine("************");
+                Console.WriteLine($"Benchmarking {backend.Name}");
                 BenchmarkBase? bench_base = (BenchmarkBase?)Activator.CreateInstance(backend);
                 if (bench_base == null)
                     throw new InvalidOperationException($"Failed to create instance of {backend}");
