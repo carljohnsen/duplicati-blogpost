@@ -40,14 +40,25 @@ namespace sqlite_bench
 
             // XOR1 benchmark
             // Warmup
-            bench.IterationSetupXor1();
+            bench.IterationSetupXor();
             bench.Xor1();
             // Run
-            bench.IterationSetupXor1();
+            bench.IterationSetupXor();
             sw.Restart();
             bench.Xor1();
             sw.Stop();
             Console.WriteLine($"XOR1 time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+
+            // XOR2 benchmark
+            // Warmup
+            bench.IterationSetupXor();
+            bench.Xor2();
+            // Run
+            bench.IterationSetupXor();
+            sw.Restart();
+            bench.Xor2();
+            sw.Stop();
+            Console.WriteLine($"XOR2 time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
 
             bench.GlobalCleanup();
 #else

@@ -167,8 +167,8 @@ namespace sqlite_bench
         }
         public abstract void Select();
 
-        [IterationSetup(Target = nameof(Xor1))]
-        public void IterationSetupXor1()
+        [IterationSetup(Targets = new[] { nameof(Xor1), nameof(Xor2) })]
+        public void IterationSetupXor()
         {
             long new_id = NumEntries;
             for (int i = 0; i < NumRepetitions; i++)
@@ -184,7 +184,7 @@ namespace sqlite_bench
                     };
         }
         public abstract void Xor1();
-        // public abstract void Xor2();
+        public abstract void Xor2();
         // public abstract void Join();
         // public abstract void NewBlockset();
     }
