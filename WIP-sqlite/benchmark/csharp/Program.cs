@@ -11,9 +11,9 @@ namespace sqlite_bench
         {
 #if DEBUG
             var sw = new Stopwatch();
-            BenchmarkBase.NumEntries = 100_000;
-            BenchmarkBase.NumRepetitions = 10_000;
             var bench = new SystemData();
+            bench.NumEntries = 100_000;
+            bench.NumRepetitions = 10_000;
             bench.GlobalSetup();
 
             (string, Action, Action)[] benchmarks = [
@@ -34,7 +34,7 @@ namespace sqlite_bench
                 sw.Restart();
                 run();
                 sw.Stop();
-                Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)SystemData.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+                Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
             }
 
             bench.GlobalCleanup();

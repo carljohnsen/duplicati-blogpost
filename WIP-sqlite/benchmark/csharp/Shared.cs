@@ -1,4 +1,8 @@
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Reports;
+using BenchmarkDotNet.Running;
 
 namespace sqlite_bench
 {
@@ -11,18 +15,59 @@ namespace sqlite_bench
         public long BlocksetId { get; init; }
     }
 
+    public class RowsPerSecondColumn : IColumn
+    {
+        public string Id => nameof(RowsPerSecondColumn);
+        public string ColumnName => "K rows/sec (avg)";
+        public bool AlwaysShow => true;
+        public ColumnCategory Category => ColumnCategory.Custom;
+        public int PriorityInCategory => 1;
+        public bool IsNumeric => true;
+        public UnitType UnitType => UnitType.Dimensionless;
+        public string Legend => "Average rows per second";
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            var statistics = summary[benchmarkCase]?.ResultStatistics;
+            if (statistics == null) return "N/A";
+
+            double k_rows = ((int)benchmarkCase.Parameters["NumRepetitions"]) / 1e3; // Convert to thousands of rows
+            double elapsed = statistics.Mean / 1e9; // Convert from nanoseconds to seconds
+            return $"{k_rows / elapsed:F2}";
+        }
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style) =>
+            GetValue(summary, benchmarkCase);
+
+        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
+        public bool IsAvailable(Summary summary) => true;
+        public bool IsVisible(Summary summary) => true;
+    }
+
+    public class BenchmarkConfig : ManualConfig
+    {
+        public BenchmarkConfig()
+        {
+            AddColumn(new RowsPerSecondColumn());
+            SummaryStyle = new SummaryStyle(null, true, Perfolizer.Metrology.SizeUnit.B, Perfolizer.Horology.TimeUnit.Nanosecond, true)
+                .WithMaxParameterColumnWidth(int.MaxValue) // <-- prevents shortening
+                .WithRatioStyle(RatioStyle.Trend);          // optional, for better readability
+        }
+    }
+
+    [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
     public abstract class BenchmarkBase()
     {
-        [Params(10_000, 100_000)]
-        public static long NumEntries = 100_000;
-        [Params(1_000, 10_000)]
-        public static long NumRepetitions = 10_000;
+        [Params(1_000, 10_000)]//, 100_000)]
+        public long NumEntries { get; set; } = 100_000;
+        [Params(1_000, 10_000)]//, 100_000)]
+        public long NumRepetitions { get; set; } = 10_000;
 
         private readonly List<(long, long, long)> m_blocksets = [];
-        private readonly Entry[] m_entries = new Entry[NumEntries];
+        private Entry[] m_entries = [];
         protected long m_next_blocksetid = 0;
-        protected readonly Entry[] EntriesToTest = new Entry[NumRepetitions];
+        protected Entry[] EntriesToTest = [];
         protected readonly List<(long, long, long)> BlocksetToTest = [];
         protected static readonly Random m_random = new(2025_07_08);
         private readonly string[] pragmas = [
@@ -47,6 +92,8 @@ namespace sqlite_bench
         public void GlobalSetup()
         {
             this.GlobalCleanup();
+            m_entries = new Entry[NumEntries];
+            EntriesToTest = new Entry[NumRepetitions];
             using var con = new System.Data.SQLite.SQLiteConnection($"Data Source=benchmark.sqlite");
             con.Open();
             using var cmd = con.CreateCommand();
