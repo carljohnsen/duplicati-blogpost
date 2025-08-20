@@ -126,6 +126,7 @@ namespace sqlite_bench
 
             if (blockset_count > 0)
             {
+                m_blocksets.Add((m_next_blocksetid, blockset_count, blockset_size));
                 cmd_blockset.Parameters["@id"].Value = m_next_blocksetid;
                 cmd_blockset.Parameters["@length"].Value = blockset_count;
                 cmd_blockset.ExecuteNonQuery();
