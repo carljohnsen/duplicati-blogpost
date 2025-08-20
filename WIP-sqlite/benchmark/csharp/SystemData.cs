@@ -26,6 +26,13 @@ namespace sqlite_bench
             m_connection = new SQLiteConnection($"Data Source=benchmark.sqlite");
             m_connection.Open();
 
+            using (var command = m_connection.CreateCommand())
+                foreach (var pragma in pragmas)
+                {
+                    command.CommandText = pragma;
+                    command.ExecuteNonQuery();
+                }
+
             m_command_insert = m_connection.CreateCommand();
             m_command_insert.CommandText = "INSERT INTO Block (ID, Hash, Size) VALUES (@id, @hash, @size)";
             m_command_insert.Parameters.Add(new SQLiteParameter("@id", System.Data.DbType.Int64));

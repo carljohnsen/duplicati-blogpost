@@ -70,7 +70,7 @@ namespace sqlite_bench
         protected Entry[] EntriesToTest = [];
         protected readonly List<(long, long, long)> BlocksetToTest = [];
         protected static readonly Random m_random = new(2025_07_08);
-        private readonly string[] pragmas = [
+        protected readonly string[] pragmas = [
             "PRAGMA journal_mode = WAL;",
             "PRAGMA synchronous = NORMAL;",
             "PRAGMA temp_store = MEMORY;",
