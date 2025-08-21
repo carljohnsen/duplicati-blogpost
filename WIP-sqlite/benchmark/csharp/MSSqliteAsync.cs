@@ -112,7 +112,7 @@ namespace sqlite_bench
                 m_command_insert.Parameters["@size"].Value = entry.Size;
                 await m_command_insert.ExecuteNonQueryAsync().ConfigureAwait(false);
             }
-            await transaction.RollbackAsync().ConfigureAwait(false);
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -133,7 +133,7 @@ namespace sqlite_bench
             }
             finally
             {
-                await transaction.RollbackAsync().ConfigureAwait(false);
+                await transaction.CommitAsync().ConfigureAwait(false);
             }
         }
 
@@ -160,7 +160,7 @@ namespace sqlite_bench
                     throw new Exception($"Failed to insert entry {entry.Id}, found {longId}");
                 }
             }
-            await transaction.RollbackAsync().ConfigureAwait(false);
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -182,7 +182,7 @@ namespace sqlite_bench
                 if (id != entry.Id)
                     throw new Exception($"Failed to select entry {entry.Id}");
             }
-            await transaction.RollbackAsync().ConfigureAwait(false);
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -206,7 +206,7 @@ namespace sqlite_bench
                 if (totalSize != size)
                     throw new Exception($"Blockset {blocksetId} expected {size} total size, found {totalSize}");
             }
-            await transaction.RollbackAsync().ConfigureAwait(false);
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
 
         [Benchmark]
@@ -253,7 +253,7 @@ namespace sqlite_bench
                 }
             }
 
-            await transaction.RollbackAsync().ConfigureAwait(false);
+            await transaction.CommitAsync().ConfigureAwait(false);
         }
 
     }

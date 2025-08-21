@@ -12,10 +12,10 @@ namespace sqlite_bench
 #if DEBUG
             var sw = new Stopwatch();
             Type[] backends = [
-                //typeof(DuplicatiSQLite),
+                typeof(DuplicatiSQLite),
                 typeof(SystemData),
-                //typeof(MSSqlite),
-                //typeof(MSSqliteAsync),
+                typeof(MSSqlite),
+                typeof(MSSqliteAsync),
             ];
             foreach (var backend in backends)
             {
@@ -58,12 +58,14 @@ namespace sqlite_bench
                             // Warmup
                             setup();
                             run();
+                            bench_sync.IterationCleanup();
                             // Run
                             setup();
                             sw.Restart();
                             run();
                             sw.Stop();
                             Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_sync.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+                            bench_sync.IterationCleanup();
                         }
 
                         bench_sync.GlobalCleanup();
@@ -92,12 +94,14 @@ namespace sqlite_bench
                             // Warmup
                             setup();
                             await run();
+                            bench_async.IterationCleanup();
                             // Run
                             setup();
                             sw.Restart();
                             await run();
                             sw.Stop();
                             Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_async.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
+                            bench_async.IterationCleanup();
                         }
 
                         bench_async.GlobalCleanup();
@@ -105,6 +109,9 @@ namespace sqlite_bench
                 }
             }
 #else
+            BenchmarkRunner.Run<DuplicatiSQLite>();
+            BenchmarkRunner.Run<SystemData>();
+            BenchmarkRunner.Run<MSSqlite>();
             BenchmarkRunner.Run<MSSqliteAsync>();
 #endif
         }

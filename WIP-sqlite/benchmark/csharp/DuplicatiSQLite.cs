@@ -91,7 +91,7 @@ namespace sqlite_bench
                     .SetParameterValue("@size", entry.Size)
                     .ExecuteNonQuery();
             }
-            transaction.Rollback();
+            transaction.Commit();
         }
 
         [Benchmark]
@@ -114,7 +114,7 @@ namespace sqlite_bench
             }
             finally
             {
-                transaction.Rollback();
+                transaction.Commit();
             }
         }
 
@@ -143,7 +143,7 @@ namespace sqlite_bench
                     throw new Exception($"Failed to insert entry {entry.Id}, found {longId}");
                 }
             }
-            transaction.Rollback();
+            transaction.Commit();
         }
 
         [Benchmark]
@@ -167,7 +167,7 @@ namespace sqlite_bench
                 if (id != entry.Id)
                     throw new Exception($"Failed to select entry {entry.Id}");
             }
-            transaction.Rollback();
+            transaction.Commit();
         }
 
         [Benchmark]
@@ -192,7 +192,7 @@ namespace sqlite_bench
                 if (totalSize != size)
                     throw new Exception($"Blockset {blocksetId} expected {size} total size, found {totalSize}");
             }
-            transaction.Rollback();
+            transaction.Commit();
         }
 
         [Benchmark]
@@ -243,7 +243,7 @@ namespace sqlite_bench
                 }
             }
 
-            transaction.Rollback();
+            transaction.Commit();
         }
 
     }

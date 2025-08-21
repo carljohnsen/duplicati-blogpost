@@ -197,6 +197,35 @@ namespace sqlite_bench
                     File.Delete(file);
         }
 
+        [IterationCleanup]
+        public void IterationCleanup()
+        {
+            using var con = new System.Data.SQLite.SQLiteConnection($"Data Source=benchmark.sqlite");
+            con.Open();
+            using var cmd = con.CreateCommand();
+            using var transaction = con.BeginTransaction();
+            cmd.Transaction = transaction;
+            cmd.CommandText = "DELETE FROM Block WHERE ID >= @id";
+            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
+            cmd.Parameters["@id"].Value = NumEntries;
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = "DELETE FROM BlocksetEntry WHERE BlocksetID >= @id";
+            cmd.Parameters.Clear();
+            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
+            cmd.Parameters["@id"].Value = m_blocksets.Count;
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = "DELETE FROM Blockset WHERE ID >= @id";
+            cmd.Parameters.Clear();
+            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
+            cmd.Parameters["@id"].Value = m_blocksets.Count;
+            cmd.ExecuteNonQuery();
+
+            transaction.Commit();
+            con.Close();
+        }
+
         [IterationSetup(Target = "Insert")]
         public void IterationSetupInsert()
         {
