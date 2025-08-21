@@ -72,7 +72,21 @@ namespace sqlite_bench
                             bench_sync.IterationCleanup();
                         }
 
-                        bench_sync.GlobalCleanup();
+                        switch (bench_sync)
+                        {
+                            case DuplicatiSQLite duplicatiSQLite:
+                                duplicatiSQLite.GlobalCleanup();
+                                break;
+                            case SystemData systemData:
+                                systemData.GlobalCleanup();
+                                break;
+                            case MSSqlite mssqlite:
+                                mssqlite.GlobalCleanup();
+                                break;
+                            case PInvokeCAPI pInvokeCAPI:
+                                pInvokeCAPI.GlobalCleanup();
+                                break;
+                        }
                         break;
                     case BenchmarkAsync bench_async:
                         sw.Restart();
