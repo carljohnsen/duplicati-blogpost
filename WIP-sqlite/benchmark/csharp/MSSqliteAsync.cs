@@ -23,7 +23,7 @@ namespace sqlite_bench
         public new void GlobalSetup()
         {
             base.GlobalSetup();
-            m_connection = new SqliteConnection($"Data Source=benchmark.sqlite");
+            m_connection = new SqliteConnection($"Data Source=benchmark.sqlite;Pooling=false");
             m_connection.Open();
 
             using (var command = m_connection.CreateCommand())
