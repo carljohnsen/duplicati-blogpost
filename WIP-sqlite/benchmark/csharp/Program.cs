@@ -16,6 +16,7 @@ namespace sqlite_bench
                 typeof(SystemData),
                 typeof(MSSqlite),
                 typeof(MSSqliteAsync),
+                typeof(PInvokeCAPI),
             ];
             foreach (var backend in backends)
             {
@@ -40,6 +41,9 @@ namespace sqlite_bench
                                 break;
                             case MSSqlite mssqlite:
                                 mssqlite.GlobalSetup();
+                                break;
+                            case PInvokeCAPI pInvokeCAPI:
+                                pInvokeCAPI.GlobalSetup();
                                 break;
                         }
                         sw.Stop();
@@ -113,6 +117,7 @@ namespace sqlite_bench
             BenchmarkRunner.Run<SystemData>();
             BenchmarkRunner.Run<MSSqlite>();
             BenchmarkRunner.Run<MSSqliteAsync>();
+            BenchmarkRunner.Run<PInvokeCAPI>();
 #endif
         }
     }
