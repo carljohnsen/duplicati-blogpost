@@ -78,6 +78,28 @@ namespace sqlite_bench
             base.GlobalCleanup();
         }
 
+        [IterationCleanup]
+        public override void IterationCleanup()
+        {
+            using var cmd = m_connection!.CreateCommand();
+            using var transaction = m_connection.BeginTransaction();
+            cmd.Transaction = transaction;
+
+            cmd.SetCommandAndParameters("DELETE FROM Block WHERE ID >= @id")
+                .SetParameterValue("@id", NumEntries)
+                .ExecuteNonQuery();
+
+            cmd.SetCommandAndParameters("DELETE FROM BlocksetEntry WHERE BlocksetID >= @id")
+                .SetParameterValue("@id", m_blocksets.Count)
+                .ExecuteNonQuery();
+
+            cmd.SetCommandAndParameters("DELETE FROM Blockset WHERE ID >= @id")
+                .SetParameterValue("@id", m_blocksets.Count)
+                .ExecuteNonQuery();
+
+            transaction.Commit();
+        }
+
         [Benchmark]
         public override void Insert()
         {

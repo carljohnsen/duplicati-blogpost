@@ -64,6 +64,16 @@ namespace sqlite_bench
             base.GlobalCleanup();
         }
 
+        [IterationCleanup]
+        public override void IterationCleanup()
+        {
+            Execute("BEGIN TRANSACTION;");
+            Execute($"DELETE FROM Block WHERE ID >= {NumEntries}");
+            Execute($"DELETE FROM BlocksetEntry WHERE BlocksetID >= {m_blocksets.Count}");
+            Execute($"DELETE FROM Blockset WHERE ID >= {m_blocksets.Count}");
+            Execute("COMMIT;");
+        }
+
         [Benchmark]
         public override void Insert()
         {

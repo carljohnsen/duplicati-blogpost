@@ -62,14 +62,42 @@ namespace sqlite_bench
                             // Warmup
                             setup();
                             run();
-                            bench_sync.IterationCleanup();
+                            switch (bench_sync)
+                            {
+                                case DuplicatiSQLite duplicatiSQLite:
+                                    duplicatiSQLite.IterationCleanup();
+                                    break;
+                                case SystemData systemData:
+                                    systemData.IterationCleanup();
+                                    break;
+                                case MSSqlite mssqlite:
+                                    mssqlite.IterationCleanup();
+                                    break;
+                                case PInvokeCAPI pInvokeCAPI:
+                                    pInvokeCAPI.IterationCleanup();
+                                    break;
+                            }
                             // Run
                             setup();
                             sw.Restart();
                             run();
                             sw.Stop();
                             Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_sync.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-                            bench_sync.IterationCleanup();
+                            switch (bench_sync)
+                            {
+                                case DuplicatiSQLite duplicatiSQLite:
+                                    duplicatiSQLite.IterationCleanup();
+                                    break;
+                                case SystemData systemData:
+                                    systemData.IterationCleanup();
+                                    break;
+                                case MSSqlite mssqlite:
+                                    mssqlite.IterationCleanup();
+                                    break;
+                                case PInvokeCAPI pInvokeCAPI:
+                                    pInvokeCAPI.IterationCleanup();
+                                    break;
+                            }
                         }
 
                         switch (bench_sync)
@@ -112,14 +140,24 @@ namespace sqlite_bench
                             // Warmup
                             setup();
                             await run();
-                            bench_async.IterationCleanup();
+                            switch (bench_async)
+                            {
+                                case MSSqliteAsync mssqliteasync:
+                                    mssqliteasync.IterationCleanup();
+                                    break;
+                            }
                             // Run
                             setup();
                             sw.Restart();
                             await run();
                             sw.Stop();
                             Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_async.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
-                            bench_async.IterationCleanup();
+                            switch (bench_async)
+                            {
+                                case MSSqliteAsync mssqliteasync:
+                                    mssqliteasync.IterationCleanup();
+                                    break;
+                            }
                         }
 
                         bench_async.GlobalCleanup();

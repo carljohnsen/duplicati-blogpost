@@ -57,15 +57,15 @@ namespace sqlite_bench
 
     [Config(typeof(BenchmarkConfig))]
     [MinColumn, MaxColumn, AllStatisticsColumn]
-    public class BenchmarkBase()
+    public abstract class BenchmarkBase()
     {
         [Params(1_000, 10_000)]//, 100_000)]
         public long NumEntries { get; set; } = 100_000;
         [Params(1_000, 10_000)]//, 100_000)]
         public long NumRepetitions { get; set; } = 10_000;
 
-        private readonly List<(long, long, long)> m_blocksets = [];
-        private Entry[] m_entries = [];
+        protected readonly List<(long, long, long)> m_blocksets = [];
+        protected Entry[] m_entries = [];
         protected long m_next_blocksetid = 0;
         protected Entry[] EntriesToTest = [];
         protected readonly List<(long, long, long)> BlocksetToTest = [];
@@ -197,34 +197,7 @@ namespace sqlite_bench
                     File.Delete(file);
         }
 
-        [IterationCleanup]
-        public void IterationCleanup()
-        {
-            using var con = new System.Data.SQLite.SQLiteConnection($"Data Source=benchmark.sqlite");
-            con.Open();
-            using var cmd = con.CreateCommand();
-            using var transaction = con.BeginTransaction();
-            cmd.Transaction = transaction;
-            cmd.CommandText = "DELETE FROM Block WHERE ID >= @id";
-            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
-            cmd.Parameters["@id"].Value = NumEntries;
-            cmd.ExecuteNonQuery();
-
-            cmd.CommandText = "DELETE FROM BlocksetEntry WHERE BlocksetID >= @id";
-            cmd.Parameters.Clear();
-            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
-            cmd.Parameters["@id"].Value = m_blocksets.Count;
-            cmd.ExecuteNonQuery();
-
-            cmd.CommandText = "DELETE FROM Blockset WHERE ID >= @id";
-            cmd.Parameters.Clear();
-            cmd.Parameters.Add(new System.Data.SQLite.SQLiteParameter("@id", System.Data.DbType.Int64));
-            cmd.Parameters["@id"].Value = m_blocksets.Count;
-            cmd.ExecuteNonQuery();
-
-            transaction.Commit();
-            con.Close();
-        }
+        public abstract void IterationCleanup();
 
         [IterationSetup(Target = "Insert")]
         public void IterationSetupInsert()
