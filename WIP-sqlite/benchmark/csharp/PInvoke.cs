@@ -333,7 +333,7 @@ namespace sqlite_bench
         {
             int return_code = sqlite3_step(stmt);
             if (!(return_code == SQLITE_DONE || return_code == SQLITE_ROW))
-                throw new Exception($"Failed to execute statement: {return_code}");
+                throw new Exception($"Failed to execute statement: {return_code}: {ExtendedErrorMessage()}");
             Reset(stmt);
         }
 
@@ -341,7 +341,7 @@ namespace sqlite_bench
         {
             int return_code = sqlite3_step(stmt);
             if (return_code != SQLITE_ROW)
-                throw new Exception($"Failed to execute statement: {return_code}");
+                throw new Exception($"Failed to execute statement: {return_code}: {ExtendedErrorMessage()}");
             long result = sqlite3_column_int64(stmt, 0);
             Reset(stmt);
             return result;
