@@ -59,9 +59,9 @@ namespace sqlite_bench
     [MinColumn, MaxColumn, AllStatisticsColumn]
     public abstract class BenchmarkBase()
     {
-        [Params(1_000, 10_000)]//, 100_000)]
+        [Params(10_000, 100_000, 1_000_000, 10_000_000)]
         public long NumEntries { get; set; } = 100_000;
-        [Params(1_000, 10_000)]//, 100_000)]
+        [Params(100_000)]
         public long NumRepetitions { get; set; } = 10_000;
 
         protected readonly List<(long, long, long)> m_blocksets = [];
