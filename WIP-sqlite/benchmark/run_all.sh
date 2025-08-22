@@ -23,3 +23,4 @@ done
 
 dotnet build -c Release csharp
 csharp/bin/Release/net9.0/sqlite_bench --buildTimeout 600
+cp BenchmarkDotNet.Artifacts/results/*.csv reports/
