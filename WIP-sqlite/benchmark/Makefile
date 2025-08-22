@@ -1,4 +1,5 @@
-CXXFLAGS=-std=c++20 -O3 -mtune=native -flto -lsqlite3 -fopenmp
+CXXFLAGS=-std=c++20 -O3 -mtune=native -flto
+LIBS=-lsqlite3
 
 # Check if macOS
 ifeq ($(shell uname), Darwin)
@@ -16,7 +17,7 @@ all: $(TARGETS)
 
 bin/%: cpp/%.cpp cpp/shared.hpp
 	@mkdir -p bin
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
 clean:
 	rm -rf bin reports benchmark.sqlite
