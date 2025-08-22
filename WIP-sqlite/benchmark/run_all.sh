@@ -1,3 +1,4 @@
+#!/bin/bash
 make -j
 
 warmup=10000
