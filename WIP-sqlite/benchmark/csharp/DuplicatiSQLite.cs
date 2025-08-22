@@ -69,6 +69,7 @@ namespace sqlite_bench
             m_command_select?.Dispose();
             m_command_xor2_insert?.Dispose();
             m_command_join?.Dispose();
+            m_command_blockset_insert_block?.Dispose();
             m_command_blockset_start?.Dispose();
             m_command_blockset_last_row?.Dispose();
             m_command_blockset_entry_insert?.Dispose();
