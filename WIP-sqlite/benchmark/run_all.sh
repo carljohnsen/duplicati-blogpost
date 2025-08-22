@@ -19,3 +19,6 @@ for size in "${sizes[@]}"; do
         ./bin/batching --num-entries $size --num-warmup $warmup --num-repetitions $repetitions --num-batch $batch
     done
 done
+
+dotnet build -c Release csharp
+csharp/bin/Release/net9.0/sqlite_bench --buildTimeout 600
