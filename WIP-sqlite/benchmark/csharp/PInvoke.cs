@@ -243,7 +243,7 @@ namespace sqlite_bench
         public static extern int sqlite3_column_int64(IntPtr stmt, int col);
 
         [DllImport("sqlite3", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int sqlite3_column_text(IntPtr stmt, int col);
+        public static extern IntPtr sqlite3_column_text(IntPtr stmt, int col);
 
         [DllImport("sqlite3", CallingConvention = CallingConvention.Cdecl)]
         public static extern int sqlite3_config(int op);
