@@ -206,7 +206,7 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
         sqlite3_bind_int64(stmt, 1, entry.id);
         sqlite3_bind_text(stmt, 2, entry.hash.c_str(), entry.hash.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 3, entry.size);
-        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, prefix + " insert " + std::to_string(i)))
+        if (!assert_sqlite_return_code(sqlite3_step(stmt), db, prefix + " insert " + std::to_string(i) + " " + std::to_string(entry.id)))
             return -1;
         sqlite3_reset(stmt);
 
