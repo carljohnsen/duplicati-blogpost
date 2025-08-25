@@ -5,3 +5,4 @@ lib/
 data*
 *.sqlite*
 BenchmarkDotNet.Artifacts/
+*.dll
