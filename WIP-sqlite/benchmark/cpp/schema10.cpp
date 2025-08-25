@@ -72,11 +72,9 @@ int measure_insert(sqlite3 *db, Config &config, std::mt19937 &rng, const std::st
 
         auto end = std::chrono::high_resolution_clock::now();
     }
-    sqlite3_finalize(stmt);
     sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
     std::vector<uint64_t> times;
     for (uint64_t i = 0; i < config.num_repetitions; i++)
     {
@@ -177,8 +175,8 @@ int select_index_normal(Config &config)
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
     }
 
+    sqlite3_finalize(stmt);
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-
     sqlite3_close(db);
 
     report_stats(config, times, "schema10_select_index_normal");
@@ -274,8 +272,8 @@ int select_index_h0(Config &config)
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
     }
 
+    sqlite3_finalize(stmt);
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-
     sqlite3_close(db);
 
     report_stats(config, times, "schema10_select_index_h0");
@@ -371,8 +369,8 @@ int select_index_h0_size(Config &config)
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
     }
 
+    sqlite3_finalize(stmt);
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-
     sqlite3_close(db);
 
     report_stats(config, times, "schema10_select_index_h0_size");
@@ -468,8 +466,8 @@ int select_index_size(Config &config)
         sqlite3_reset(stmt);
     }
 
+    sqlite3_finalize(stmt);
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-
     sqlite3_close(db);
 
     report_stats(config, times, "schema10_select_index_size");
