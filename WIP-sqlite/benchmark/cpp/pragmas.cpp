@@ -91,6 +91,38 @@ int fill(sqlite3 *db, std::mt19937 &rng, std::vector<Entry> &entries, uint64_t n
     return 0;
 }
 
+// Performs a manual rollback; needed as JOURNAL_MODE=OFF corrupts the file on rollback on windows.
+int rollback(std::string report_name, sqlite3 *db, Config &config)
+{
+    if (!report_name.ends_with("journal_off"))
+    {
+        return sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    }
+
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    auto check_rc = [](int rc, sqlite3 *db, const std::string &msg)
+    {
+        if (rc != SQLITE_OK)
+        {
+            std::cerr << msg << ": " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+        return true;
+    };
+
+    std::string sql;
+    check_rc(sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr), db, "Failed to begin transaction");
+    sql = "DELETE FROM BLOCK WHERE ID >= " + std::to_string(config.num_entries) + ";";
+    check_rc(sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr), db, "Failed to delete from Block");
+    sql = "DELETE FROM Blockset WHERE ID IN (SELECT BlocksetID FROM BlocksetEntry WHERE BlockID >= " + std::to_string(config.num_entries) + ");";
+    check_rc(sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr), db, "Failed to delete from Blockset");
+    sql = "DELETE FROM BlocksetEntry WHERE BlockID >= " + std::to_string(config.num_entries) + ";";
+    check_rc(sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr), db, "Failed to delete from BlocksetEntry");
+    check_rc(sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr), db, "Failed to commit transaction");
+    return 0;
+}
+
 int measure(
     sqlite3 *db,
     Config &config,
@@ -125,7 +157,7 @@ int measure(
 
         auto end = std::chrono::high_resolution_clock::now();
     }
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::vector<uint64_t> times;
@@ -155,7 +187,7 @@ int measure(
 
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
     }
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     report_stats(config, times, report_name);
 
@@ -358,7 +390,6 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
     };
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
     for (uint64_t i = 0; i < config.num_warmup; i++)
     {
         uint64_t blockset_id = (rng() % max_blockset) + 1;
@@ -366,11 +397,9 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         if (join_inner(db, blockset_id, expected_count, "Warmup") != 0)
             return -1;
     }
-
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
     std::vector<uint64_t> times;
     uint64_t total_rows = 0;
     while (total_rows < config.num_repetitions)
@@ -386,8 +415,7 @@ int measure_join(sqlite3 *db, Config &config, std::mt19937 &rng, const std::vect
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count() / expected_count);
         total_rows += expected_count;
     }
-
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     sqlite3_finalize(stmt);
 
@@ -507,7 +535,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         }
     }
 
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
@@ -544,7 +572,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         }
     }
 
-    sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
+    rollback(report_name, db, config);
 
     sqlite3_finalize(stmt_start_blockset);
     sqlite3_finalize(stmt_last_row);
