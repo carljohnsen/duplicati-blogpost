@@ -37,8 +37,7 @@ if not exist %LIBS% (
 )
 
 : Define the targets
-: set TARGETS=schema1 schema4 schema7 schema10 pragmas parallel batching
-set TARGETS=batching
+set TARGETS=schema1 schema4 schema7 schema10 pragmas parallel batching
 set LINKFLAGS=/MACHINE:X64
 set COMPILEFLAGS=/std:c++20 /EHsc /favor:AMD64 /O2 /openmp
 
@@ -47,3 +46,6 @@ for %%t in (%TARGETS%) do (
     cl /c /Foobj\%%t.obj /I %INCLUDE_DIRS% /I cpp\ cpp\%%t.cpp %COMPILEFLAGS%
     link /OUT:bin\%%t.exe obj\%%t.obj %LIBS% %LINKFLAGS%
 )
+
+dotnet build -c Release csharp
+copy lib\sqlite-dll-win-x64-3500400\sqlite3.dll csharp\bin\Release\net9.0
