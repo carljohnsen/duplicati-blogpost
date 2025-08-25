@@ -33,7 +33,6 @@ if not exist %LIBS% (
     mkdir lib\sqlite-dll-win-x64-3500400
     tar xf lib\sqlite-dll-win-x64-3500400.zip -C lib\sqlite-dll-win-x64-3500400
     LIB /DEF:lib\sqlite-dll-win-x64-3500400\sqlite3.def /MACHINE:X64 /OUT:%LIBS%
-    copy lib\sqlite-dll-win-x64-3500400\sqlite3.dll bin
 )
 
 : Define the targets
@@ -46,6 +45,6 @@ for %%t in (%TARGETS%) do (
     cl /c /Foobj\%%t.obj /I %INCLUDE_DIRS% /I cpp\ cpp\%%t.cpp %COMPILEFLAGS%
     link /OUT:bin\%%t.exe obj\%%t.obj %LIBS% %LINKFLAGS%
 )
+copy lib\sqlite-dll-win-x64-3500400\sqlite3.dll bin
 
 dotnet build -c Release csharp
-copy lib\sqlite-dll-win-x64-3500400\sqlite3.dll csharp\bin\Release\net9.0
