@@ -160,7 +160,12 @@ namespace sqlite_bench
                             }
                         }
 
-                        bench_async.GlobalCleanup();
+                        switch (bench_async)
+                        {
+                            case MSSqliteAsync mssqliteasync:
+                                mssqliteasync.GlobalCleanup();
+                                break;
+                        }
                         break;
                 }
             }
