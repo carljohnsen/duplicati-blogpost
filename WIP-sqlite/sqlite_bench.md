@@ -155,6 +155,8 @@ Then with some probability, we'll start a new blockset.
 As this blog post focuses on isolating the performance of SQLite, we will start with a C++ implementation, to avoid any overhead from C#. This will allow us to obtain a best-case baseline, which we can then compare against the C# implementations.
 We will be using all of the compiler optimizations available; `-O3 -march=native -mtune=native -flto`, and we will be using the `sqlite3` C API directly, to avoid any overhead from higher-level libraries.
 To further maximize performance, we will use prepared statements and each query will be run in a transaction.
+When applicable, we'll be measuring the performance of the raw query: bind, step[, column], and reset.
+For others, we'll be measuring the performance of a transaction, which either contains a single query, or a bunch of them.
 
 ### Indexes and schema changes
 
@@ -194,6 +196,8 @@ Zoom into a specific x, and show a boxplot for each of the strategies.
 
 Hopefully, they'll agree that the normal strategy works just fine.
 
+This benchmark measures
+
 ### PRAGMAs
 
 A less intrusive way to optimize SQLite is to use PRAGMAs, which are special commands that can be used to change the behavior of the SQLite engine.
@@ -222,15 +226,45 @@ Looking at the figures between parallel and pragmas, we see a huge difference du
 
 ## Backends
 
+Reverting relevance back to Duplicati, we'll transition back to C#.
+In .NET, there are multiple backends to choose from when working with SQLite databases.
+We'll do a short look into each of them, their pros/cons, and their performance characteristics.
+
 ### Duplicati's shipped SQLite
+
+We'll look into this to provide a baseline to compare against.
+Duplicati's shipped SQLite features prebuilt binaries for all of the architectures that Duplicati supports.
+However, due to previous compatibility issues, the SQLite version is not the latest.
+This also means that we have to build the binaries with each of our releases. This gives greater control over the build process, at the cost of increased maintenance overhead.
 
 ### System.Data.SQLite
 
-### Microsoft.Data.Sqlite
+This is the "default" ADO.NET provider for SQLite. It's been around for a long time and is well-tested, but it has some limitations, especially when it comes to asynchronous operations.
+Switching to this backend would require some changes to the codebase, particularly around how database connections and commands are handled.
+So to make this switch, it has to be worth it.
 
 ### sqlite3 through PInvoke
 
+This is a low-level approach that involves using PInvoke to call the SQLite C API directly from .NET. While this can offer the best performance, it also requires a deep understanding of both the SQLite API and the PInvoke mechanism. This approach is generally not recommended unless absolutely necessary.
+Especially since this involves dealing with memory management and marshaling data between managed and unmanaged code, leading to unsafe code.
+So this has to be extremely beneficial in terms of performance to justify the complexity and added risk.
+
+### Microsoft.Data.Sqlite
+
+This is a newer ADO.NET provider for SQLite that is designed to be more modern and efficient. It has better support for asynchronous operations and is generally recommended for new development.
+It is Microsoft's own fork of System.Data.SQLite and aims to provide a more streamlined and performant experience.
+Like Duplicati, it ships with prebuilt binaries for most architectures - even more than Duplicati's.
+It is one of the more strict ADO.NET providers, enforcing better practices and providing more consistent behavior.
+This does also mean that it may be less flexible in certain scenarios, requiring more effort to work around its limitations.
+We see this as a good thing, as side effects are minimized, making the code more explicit.
+
 ### Asynchronous Microsoft.Data.Sqlite
+
+Microsoft.Data.Sqlite supports asynchronous operations, which can improve performance in scenarios where the database is accessed concurrently.
+This is especially useful for Duplicati, since most of its internal code already leverages asynchronous programming.
+We will benchmark the performance of asynchronous operations compared to synchronous operations.
+The asynchronous backend also allows for more efficient use of resources, as it can free up threads while waiting for I/O operations to complete.
+It also allows for cancellation, improving the responsiveness of the application.
 
 # Combining everything
 
@@ -243,6 +277,8 @@ Show scaling graphs.
 # Future work
 
 Revisit Duplicati to see that these optimizations do in fact speed up the process.
+
+Batching / bulk inserts. MSSqlite allows for bulk inserts. Maybe there's value in keeping a small batch in memory, flushing it to the database periodically. This is only true if the bulk inserts on their own are faster than individual inserts.
 
 # Conclusion
 
