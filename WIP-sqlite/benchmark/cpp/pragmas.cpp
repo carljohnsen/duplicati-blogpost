@@ -695,6 +695,7 @@ int main(int argc, char *argv[])
 
     for (auto &[report_name, pragmas] : pragmas_to_run)
     {
+        std::cout << "Running " << report_name << std::endl;
         int ret = measure_all(entries, config, report_name, pragmas);
         if (ret != 0)
             return ret;
