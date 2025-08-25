@@ -615,6 +615,10 @@ int measure_all(std::vector<Entry> &entries, Config &config, std::string &report
     if (measure_new_blockset(db, config, rng, entries, "pragmas_blockset_" + report_name) != 0)
         return -1;
 
+    // Always revert journal mode to delete prior to closing, so that others won't be in WAL mode.
+    sqlite3_wal_checkpoint(db, nullptr);
+    sqlite3_exec(db, "PRAGMA journal_mode = DELETE;", nullptr, nullptr, nullptr);
+
     sqlite3_close(db);
 
     return 0;
