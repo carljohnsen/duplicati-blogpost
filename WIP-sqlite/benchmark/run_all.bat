@@ -28,7 +28,7 @@ REM Build C# project
 dotnet build -c Release csharp
 
 REM Run C# benchmark
-csharp\bin\Release\net9.0\sqlite_bench --buildTimeout 600
+csharp\bin\Release\net9.0\sqlite_bench.exe --buildTimeout 600
 
 REM Copy results
 copy BenchmarkDotNet.Artifacts\results\*.csv reports\
