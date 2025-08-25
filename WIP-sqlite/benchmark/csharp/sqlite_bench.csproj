@@ -13,6 +13,11 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
     <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
     <ProjectReference Include="../lib/duplicati/Duplicati/Library/Main/Duplicati.Library.Main.csproj" />
+    <!-- Include the sqlite3.dll on Windows -->
+    <None Include="..\lib\sqlite-dll-win-x64-3500400\sqlite3.dll" Condition=" '$(OS)' == 'Windows_NT' ">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
