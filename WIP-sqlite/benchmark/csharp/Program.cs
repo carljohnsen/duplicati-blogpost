@@ -12,6 +12,7 @@ namespace sqlite_bench
 #if DEBUG
             var sw = new Stopwatch();
             Type[] backends = [
+                typeof(DuplicatiSQLiteNoPragmas),
                 typeof(DuplicatiSQLite),
                 typeof(SystemData),
                 typeof(MSSqlite),
@@ -33,6 +34,9 @@ namespace sqlite_bench
                         sw.Restart();
                         switch (bench_sync)
                         {
+                            case DuplicatiSQLiteNoPragmas duplicatiSQLiteNoPragmas:
+                                duplicatiSQLiteNoPragmas.GlobalSetup();
+                                break;
                             case DuplicatiSQLite duplicatiSQLite:
                                 duplicatiSQLite.GlobalSetup();
                                 break;
@@ -64,6 +68,9 @@ namespace sqlite_bench
                             run();
                             switch (bench_sync)
                             {
+                                case DuplicatiSQLiteNoPragmas duplicatiSQLiteNoPragmas:
+                                    duplicatiSQLiteNoPragmas.IterationCleanup();
+                                    break;
                                 case DuplicatiSQLite duplicatiSQLite:
                                     duplicatiSQLite.IterationCleanup();
                                     break;
@@ -85,6 +92,9 @@ namespace sqlite_bench
                             Console.WriteLine($"{name} time: {sw.ElapsedMilliseconds} ms ({((double)bench_sync.NumRepetitions) / sw.ElapsedMilliseconds:.02} kops/s)");
                             switch (bench_sync)
                             {
+                                case DuplicatiSQLiteNoPragmas duplicatiSQLiteNoPragmas:
+                                    duplicatiSQLiteNoPragmas.IterationCleanup();
+                                    break;
                                 case DuplicatiSQLite duplicatiSQLite:
                                     duplicatiSQLite.IterationCleanup();
                                     break;
@@ -102,6 +112,9 @@ namespace sqlite_bench
 
                         switch (bench_sync)
                         {
+                            case DuplicatiSQLiteNoPragmas duplicatiSQLiteNoPragmas:
+                                duplicatiSQLiteNoPragmas.GlobalCleanup();
+                                break;
                             case DuplicatiSQLite duplicatiSQLite:
                                 duplicatiSQLite.GlobalCleanup();
                                 break;
