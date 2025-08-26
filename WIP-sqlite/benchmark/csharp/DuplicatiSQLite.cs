@@ -29,7 +29,7 @@ namespace sqlite_bench
             base.GlobalSetup();
             var default_pagecache = MemoryInfo.GetTotalMemoryString(0.01, SQLiteLoader.MINIMUM_SQLITE_PAGE_CACHE_SIZE); // 1% of the total memory
             var pagecache = Sizeparser.ParseSize(default_pagecache, "kb");
-            m_connection = SQLiteLoader.LoadConnection("benchmark.sqlite", pagecache);
+            m_connection = SQLiteLoader.LoadConnection("benchmark.sqlite", 0);
 
             if (use_pragmas)
                 using (var command = m_connection.CreateCommand())
