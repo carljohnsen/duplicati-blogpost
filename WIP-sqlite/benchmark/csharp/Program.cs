@@ -170,6 +170,7 @@ namespace sqlite_bench
                 }
             }
 #else
+            BenchmarkRunner.Run<DuplicatiSQLiteNoPragmas>();
             BenchmarkRunner.Run<DuplicatiSQLite>();
             BenchmarkRunner.Run<SystemData>();
             BenchmarkRunner.Run<MSSqlite>();
