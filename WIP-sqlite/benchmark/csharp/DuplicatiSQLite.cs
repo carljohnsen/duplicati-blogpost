@@ -19,6 +19,7 @@ namespace sqlite_bench
         private IDbCommand? m_command_blockset_last_row;
         private IDbCommand? m_command_blockset_entry_insert;
         private IDbCommand? m_command_blockset_update;
+        protected bool use_pragmas = true;
 
         public DuplicatiSQLite() : base() { }
 
@@ -30,9 +31,10 @@ namespace sqlite_bench
             var pagecache = Sizeparser.ParseSize(default_pagecache, "kb");
             m_connection = SQLiteLoader.LoadConnection("benchmark.sqlite", pagecache);
 
-            using (var command = m_connection.CreateCommand())
-                foreach (var pragma in pragmas)
-                    command.ExecuteNonQuery(pragma);
+            if (use_pragmas)
+                using (var command = m_connection.CreateCommand())
+                    foreach (var pragma in pragmas)
+                        command.ExecuteNonQuery(pragma);
 
             m_command_insert = m_connection.CreateCommand("INSERT INTO Block (ID, Hash, Size) VALUES (@id, @hash, @size)");
             m_command_insert.Prepare();
@@ -269,5 +271,13 @@ namespace sqlite_bench
             transaction.Commit();
         }
 
+    }
+
+    public class DuplicatiSQLiteNoPragmas : DuplicatiSQLite
+    {
+        public DuplicatiSQLiteNoPragmas() : base()
+        {
+            use_pragmas = false;
+        }
     }
 }
