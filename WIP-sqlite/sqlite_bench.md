@@ -20,20 +20,11 @@ Here we found that a considerable amount of time spent was a series of SQL queri
 As the database grew, each query would take longer and longer, starting at around 200k queries per second, ending below 50k queries per second, with a negative trend.
 This led to this investigation, as SQLite is supposed to be fast, and it was not performing as expected.
 Even the initial throughput of 200k queries per second was nowhere near the 1M queries per second that SQLite should be able to do.
-TODO cite the source of the 1M queries per second.
 
 This blog post isolates SQLite from Duplicati to investigate the performance of SQLite itself to find out what is causing the slowdown.
 While the motivation originates from Duplicati, this investigation is self-contained and can be applied to other projects as well.
 
-# Investigations
-
-Before we begin, we need to outline what we are investigating:
-
-- Can we achieve 1M queries per second with SQLite?
-- Is C# the bottleneck, or is it the SQLite library?
-- Can we still achieve performance on-disk without having to run everything in memory?
-
-## Benchmarks
+# Benchmarks
 
 We're going to run on a simple database schema, with two tables that mimic some found in Duplicati:
 
@@ -63,7 +54,7 @@ In our benchmarks, the `Blockset` table will showcase the most simple database s
 
 We will run the following benchmarks:
 
-### Select
+## Select
 
 We start by the simplest query, selecting a row from the `Block` table, which is quite commonly used in Duplicati:
 
@@ -71,7 +62,7 @@ We start by the simplest query, selecting a row from the `Block` table, which is
 SELECT ID FROM Block WHERE Hash = ? AND Size = ?;
 ```
 
-### Insert
+## Insert
 
 Similar to the select, we also want to benchmark inserting a row into the `Block` table:
 
@@ -79,7 +70,7 @@ Similar to the select, we also want to benchmark inserting a row into the `Block
 INSERT INTO Block (Hash, Size) VALUES (?, ?);
 ```
 
-### Select xor insert `Block`
+## Select xor insert `Block`
 
 As mentioned, this is a common pattern in Duplicati, where we first try to select a row, and if it does not exist, we insert it.
 We will benchmark two different approaches to this:
@@ -102,7 +93,7 @@ INSERT OR IGNORE INTO Block (Hash, Size) VALUES (?, ?);
 SELECT ID FROM Block WHERE Hash = ? AND Size = ?;
 ```
 
-### Select from Join
+## Select from Join
 
 As the tables in Duplicati are often very small (schema-wise), but interconnected, we also want to benchmark a join query.
 We will select all blocks in a blockset:
@@ -114,7 +105,7 @@ JOIN BlocksetEntry ON BlocksetEntry.BlockID = Block.ID
 WHERE BlocksetEntry.BlocksetID = ?;
 ```
 
-### Adding blocksets
+## Adding blocksets
 
 Finally, we want to benchmark the process of adding blocksets, where we first create a new blockset:
 
@@ -150,22 +141,20 @@ UPDATE Blockset SET Length = Length + 1 WHERE ID = ?;
 
 Then with some probability, we'll start a new blockset.
 
-## Tuning
+# Tuning
 
 As this blog post focuses on isolating the performance of SQLite, we will start with a C++ implementation, to avoid any overhead from C#. This will allow us to obtain a best-case baseline, which we can then compare against the C# implementations.
-We will be using all of the compiler optimizations available; `-O3 -march=native -mtune=native -flto`, and we will be using the `sqlite3` C API directly, to avoid any overhead from higher-level libraries.
+We will be using all of the compiler optimizations available (`-O3 -march=native -mtune=native -flto` on Linux and `/favor:AMD64 /O2` on Windows), and we will be using the `sqlite3` C API directly, to avoid any overhead from higher-level libraries.
 To further maximize performance, we will use prepared statements and each query will be run in a transaction.
 When applicable, we'll be measuring the performance of the raw query: bind, step[, column], and reset.
 For others, we'll be measuring the performance of a transaction, which either contains a single query, or a bunch of them.
 
-### Indexes and schema changes
+## Indexes and schema changes
 
-TODO here the database is created from scratch for every benchmark, because we want to investigate the effect on the indices as if they're built "on-the-fly". Deleting and creating the indices only could result in better balance, and it'll put the database in an incorrect state (compared to what we'd expect in the real world).
+Here the database is created from scratch for every benchmark, because we want to investigate the effect on the indices as if they're built "on-the-fly". Deleting and creating the indices only could result in better balance, and it'll put the database in an incorrect state (compared to what we'd expect in the real world).
 
-The obvious first step to improving database performance is to add indices to the tables.
-Duplicati already uses indices, so there's not much we can do here.
+Duplicati already uses indices, so there's not much we can do in terms of adding new indices.
 However, we can modify the schema to ease the work needed by the database engine, hopefully leading to better performance.
-
 Especially, we'll see if we can modify the `Hash` column in the block table, which is currently a `TEXT` column, and we'll investigate different indexing strategies for each of the modified schemas, which should allow for smaller, and thus faster, indices. Whether this is actually the case will be investigated in the benchmarks.
 We will investigate the following:
 
@@ -183,123 +172,195 @@ We will investigate the following:
 12. 10 with the index on `h0` only, further filtering in userland.
 13. 10 with the index on `Size` only, further filtering in userland.
 
-Collective graph for select scaled logarithmically by the number of entries in the database on the x-axis, and the throughput (k queries per second) on the y-axis. Because there will be 10 curves, they won't include error.
+Let's start by looking at the performance of insert:
 
-Zoom into a specific x, and show a boxplot for each of the strategies.
+![](benchmark/figures_win/schema_insert.png)
 
-Depending on clutter, we might show the best indexing strategy for each of the schemas to make them easier to compare.
+Here we see that all of the size-based index runs out perform all the others. This makes sense, as there's less work in maintaining the overall index, leading to most inserts ending up in the same bucket. The next two winners are the schema 10 with index on either `(h0)` or `(h0, size)`, with the same argument as before to why they're performant.
+The rest are grouped towards the bottom, with the original (1.) schema performing the worst. If we focus on the largest run:
 
-If there's time:
-Collective graph for insert scaled logarithmically by the number of entries in the database on the x-axis, and the throughput (k queries per second) on the y-axis. Because there will be 10 curves, they won't include error.
+![](benchmark/figures_win/schema_insert_bar_e7.png)
 
-Zoom into a specific x, and show a boxplot for each of the strategies.
+We see the same trends as before: size-based is faster, index only on hashes does'nt provide much. However, it's interesting to note that (10.) performs better than the other "normal" schemas.
 
-Hopefully, they'll agree that the normal strategy works just fine.
+Let's turn the attention to select performance:
 
-This benchmark measures
+![](benchmark/figures_win/schema_select.png)
 
-### PRAGMAs
+In this benchmark, the roles have reversed; the size-based indexes are no longer the best performers. Instead, the "normal" indexes are now leading the pack, with the original (1.) schema performing surprisingly well. Interesting again, it seems that (10.) performs the best. Let's again look at the largest run:
+
+![](benchmark/figures_win/schema_select_bar_e7.png)
+
+The bars for the size-based indexes are there, but are too small to properly render on the image. The hash-based ones also perform quite poorly. So for a select heavy workload, the normal indexes are the way to go. The winner is the (10.) schema, which is about 20 % more performant than (1.), meaning there could be some, but not much, value in changing to this scheme. There are two reasons behind its performance:
+
+1. Less data to transfer back and forth, which should also make the index lookups faster
+2. With each sub hash being an integer, the comparison should be faster as well.
+
+In a sub-conclusion; if the workload is write-heavy, something like a size-based index could be benificial, at the cost of poor read performance. For a read-heavy or mixed workload, the normal indexes are the better choice, providing better overall performance.
+
+TODO BLOB
+
+## PRAGMAs
 
 A less intrusive way to optimize SQLite is to use PRAGMAs, which are special commands that can be used to change the behavior of the SQLite engine.
 We will investigate the following PRAGMAs:
 
-- `synchronous`: This controls how often SQLite flushes data to disk. The default is `FULL`, which is the safest option, but it can be slow as it waits for the OS to confirm that the data is written to disk through a disk sync. We will test with `NORMAL`, which is faster but less safe (it doesn't wait for the disk sync, but instead returns once the data has been written to the OS), and `OFF`, which is the fastest but can lead to data loss in case of a crash.
+- `synchronous`: This controls how often SQLite flushes data to disk. The default is `FULL`, which is the safest option, but it can be slow as it waits for the OS to confirm that the data is written to disk through a disk sync. We will test with `NORMAL`, which is faster but less safe (it doesn't wait for the disk sync, but instead returns once the data has been handed off to the OS), and `OFF`, which is the fastest but can lead to data loss in case of a crash.
 - `temp_store`: This controls where temporary tables are stored. The default is `DEFAULT`, which uses the disk, but we can also use `MEMORY`, which stores temporary tables in memory, leading to faster access times. While we won't be using temporary tables in our benchmarks, this can still lead to performance improvements as SQLite uses temporary tables for certain operations internally.
 - `journal_mode`: This controls how SQLite handles transactions. The default is `DELETE`, which is the safest option, but it can be slow as it creates a journal file on disk. We will test with `WAL`, which is faster and allows for concurrent reads and writes. We won't be testing `OFF`, which is the fastest, as it disables journaling entirely, leading to rollbacks having undefined behavior.
 - `cache_size`: This controls the size of the SQLite cache, which is used to store recently accessed data. The default is 2000 pages (around 2 MB), but we can increase this to improve performance.
 - `mmap_size`: This controls the size of the memory-mapped file used by SQLite. The default is 0, which means that memory-mapping is disabled. We can enable it to improve performance, especially for large databases.
 - `threads`: This controls the number of additional threads that SQLite can use as helper threads for prepared statements. The default is 0, which means that SQLite will not launch any additional helper threads.
 
-Similar to the schema, we'll have all of the pragmas as individual curves with throughput on the y-axis and the number of entries in the database on the x-axis. There'll be an additional curve for no pragmas, and one for all of them. Then, we'll zoom into a specific x and show a boxplot for each of the pragmas.
+In addition to these individual PRAGMAs, we'll also test the normal behaviour (no pragmas), as well as a combination of reasonable configurations: `synchronous NORMAL` to slightly slack the durability in exchange for performance, `temp_store MEMORY` as temp stores are removed after a run anyways, `journal_mode WAL` to improve performance and concurrency, `cache_size 64M` for a slight (on modern machines) increase in memory consumption, `mmap_size 64M` for better I/O performance, and `threads 2` as the plots will show that being the sweet spot.
 
-Or maybe, rather than having the baseline as a curve, all of the curves should be relative to the baseline? Or maybe have both plots. The idea behind the relative one is to quickly rule out the ones that don't improve performance.
+We've run the benchmarks with the same sizes as before, but the biggest impact of the PRAGMAs was seen on 1e6 entries:
 
-Maybe have one set of plots for each benchmark?
+![](benchmark/figures_win/pragmas_insert_e6.png)
+![](benchmark/figures_win/pragmas_select_e6.png)
+![](benchmark/figures_win/pragmas_xor1_e6.png)
+![](benchmark/figures_win/pragmas_xor2_e6.png)
+![](benchmark/figures_win/pragmas_join_e6.png)
+![](benchmark/figures_win/pragmas_blockset_e6.png)
 
-### Parallelization
+All of these plots show great performance gains, 1.44 - 5.01 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement for cranking up the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
 
-Transactions becomes deferred to allow for parallel reads without locking the entire database.
+If we focus the relative performance of 'normal' and 'combination', we can show a plot for all benchmarks across all sizes:
 
-### Transaction batches
+![](benchmark/figures_win/pragmas_comparison.png)
 
-Looking at the figures between parallel and pragmas, we see a huge difference due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
+We see that across all sizes, the combination of pragmas consistently outperforms the normal configuration.
 
-## Backends
+## Parallelization
 
-Reverting relevance back to Duplicati, we'll transition back to C#.
-In .NET, there are multiple backends to choose from when working with SQLite databases.
+This benchmark evaluates the impact of launching multiple threads accessing the database at the same time. Compared to the previous benchmarks, this changes the transaction strategies. First of all, the transactions become deferred, where they start as a read transaction (allowing concurrent access) and are lifted to a write transaction only when necessary. As a result, each thread must perform one operation in one transaction to ensure data consistency. Second of all, as each step can potentially block, measuring each step is no longer interesting. Instead, we look at the wall clock of running all of the operations, and divide the time by the number of processed elements. Each thread will receive its own set of data to process.
+
+Let's start by looking at the read-heavy benchmarks, 'select' and 'join':
+
+![](benchmark/figures_win/parallel_select.png)
+![](benchmark/figures_win/parallel_join.png)
+
+Here we see that both benchmarks benefit from parallelization, scaling nicely along with the number of threads until reaching the saturation point around 8 threads. While these two plots could indicate that parallelization is worth it, looking at the write-heavy benchmarks shows a different picture:
+
+![](benchmark/figures_win/parallel_insert.png)
+![](benchmark/figures_win/parallel_xor1.png)
+![](benchmark/figures_win/parallel_xor2.png)
+
+Here we see an increase going from 1 to 2 threads, but adding more threads after this point hurts the performance. This is likely due to lock contention inside of the database engine, which is expected. Finally, looking at the new blockset benchmark (which is a mix of read and write):
+
+![](benchmark/figures_win/parallel_new_blockset.png)
+
+We see a similar story to that of the write benchmarks. So for a read-heavy workload, parallelization can provide significant benefits, but as soon as the workload has to perform writes, the benefits diminish. This is especially due to the small transaction size (as we'll show in the next section), which is a requirement for data consistency.
+
+## Transaction batches
+
+Looking at the figures between parallel and pragmas, we see a huge difference in the y axis scale due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
+
+![](benchmark/figures_win/batching_insert.png)
+![](benchmark/figures_win/batching_select.png)
+![](benchmark/figures_win/batching_xor1.png)
+![](benchmark/figures_win/batching_xor2.png)
+![](benchmark/figures_win/batching_join.png)
+![](benchmark/figures_win/batching_new_blockset.png)
+
+Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. In short, if one wants to maximize performance, one should have as large transactions as possible. Usually other factors have a greater say on when to commit a transaction, such as keeping writes visible during concurrent accesses or data consistency in the events of a crash.
+
+# Backends
+
+Having found the most performant options, we'll transition back to Duplicati by returning to the C# implementation.
+In .NET, there are multiple backends to choose from when working with SQLite databases, leading to another tunable aspect.
 We'll do a short look into each of them, their pros/cons, and their performance characteristics.
 
-### Duplicati's shipped SQLite
+## Duplicati's shipped SQLite
 
-We'll look into this to provide a baseline to compare against.
+We'll look into this to provide a baseline to compare against without any pragmas, as this is closer to what Duplicati already uses.
 Duplicati's shipped SQLite features prebuilt binaries for all of the architectures that Duplicati supports.
-However, due to previous compatibility issues, the SQLite version is not the latest.
+However, due to previous compatibility issues, the SQLite version is not the latest, leading to some missing features found in newer versions.
 This also means that we have to build the binaries with each of our releases. This gives greater control over the build process, at the cost of increased maintenance overhead.
 
-### System.Data.SQLite
+## Microsoft.Data.Sqlite
+
+This is a newer ADO.NET provider for SQLite that is designed to be more modern and efficient, and is generally recommended for new development.
+It is Microsoft's own fork of System.Data.SQLite and aims to provide a more streamlined and performant experience.
+Like Duplicati, it ships with prebuilt binaries for most architectures - even more than Duplicati's.
+It is one of the more strict ADO.NET providers, enforcing better practices and providing more consistent behavior.
+This does also mean that it may be less flexible in certain scenarios, requiring more effort to work around its limitations.
+We see this as a good thing, as side effects are minimized, making the code, and thus intent, more explicit.
+
+Microsoft.Data.Sqlite also supports asynchronous operations, which can improve performance in scenarios where the database is accessed concurrently.
+This is especially useful for Duplicati, since most of its internal code already leverages asynchronous programming.
+We will benchmark the performance of asynchronous operations compared to synchronous operations.
+The asynchronous backend also allows for more efficient use of resources, as it can free up threads while waiting for I/O operations to complete.
+It also allows for cancellation, improving the responsiveness of the application when a user pauses or cancels a long-running operation.
+
+## sqlite3 through PInvoke
+
+This is a low-level approach that involves using PInvoke to call the SQLite C API directly from .NET. While this can offer the best performance.
+This approach is generally not recommended unless absolutely necessary since this involves dealing with memory management and marshaling data between managed and unmanaged code, further leading to unsafe code.
+So this has to be extremely beneficial in terms of performance to justify the complexity and added risk, but proves an interesting comparison to the overhead of C# compared to C++ since they're now both using the same underlying SQLite library.
+
+## System.Data.SQLite
 
 This is the "default" ADO.NET provider for SQLite. It's been around for a long time and is well-tested, but it has some limitations, especially when it comes to asynchronous operations.
 Switching to this backend would require some changes to the codebase, particularly around how database connections and commands are handled.
 So to make this switch, it has to be worth it.
 
-### sqlite3 through PInvoke
+## Results
 
-This is a low-level approach that involves using PInvoke to call the SQLite C API directly from .NET. While this can offer the best performance, it also requires a deep understanding of both the SQLite API and the PInvoke mechanism. This approach is generally not recommended unless absolutely necessary.
-Especially since this involves dealing with memory management and marshaling data between managed and unmanaged code, leading to unsafe code.
-So this has to be extremely beneficial in terms of performance to justify the complexity and added risk.
+We'll keep this short by focusing on the 1e7 runs:
 
-### Microsoft.Data.Sqlite
+![](benchmark/figures_win/csharp_Insert_bar_e7.png)
+![](benchmark/figures_win/csharp_Select_bar_e7.png)
+![](benchmark/figures_win/csharp_Xor1_bar_e7.png)
+![](benchmark/figures_win/csharp_Xor2_bar_e7.png)
+![](benchmark/figures_win/csharp_Join_bar_e7.png)
+![](benchmark/figures_win/csharp_NewBlockset_bar_e7.png)
 
-This is a newer ADO.NET provider for SQLite that is designed to be more modern and efficient. It has better support for asynchronous operations and is generally recommended for new development.
-It is Microsoft's own fork of System.Data.SQLite and aims to provide a more streamlined and performant experience.
-Like Duplicati, it ships with prebuilt binaries for most architectures - even more than Duplicati's.
-It is one of the more strict ADO.NET providers, enforcing better practices and providing more consistent behavior.
-This does also mean that it may be less flexible in certain scenarios, requiring more effort to work around its limitations.
-We see this as a good thing, as side effects are minimized, making the code more explicit.
+In all cases, we see that the C++ runs are the fastest, but not by a large margin, indicating that the C# implementations are quite competitive, even beating the C++ run through the PInvoke interface in the 'Select' benchmark.
+Across the different benchmarks, the performance differences are relatively small, suggesting that the C# implementations are well-optimized.
 
-### Asynchronous Microsoft.Data.Sqlite
+While the overall winner is synchronous Microsoft.Data.Sqlite, the asynchronous version is not far behind, making it a favorable candidate for a new backend due to its added asynchronous capabilities.
 
-Microsoft.Data.Sqlite supports asynchronous operations, which can improve performance in scenarios where the database is accessed concurrently.
-This is especially useful for Duplicati, since most of its internal code already leverages asynchronous programming.
-We will benchmark the performance of asynchronous operations compared to synchronous operations.
-The asynchronous backend also allows for more efficient use of resources, as it can free up threads while waiting for I/O operations to complete.
-It also allows for cancellation, improving the responsiveness of the application.
+# Duplicati revisit
 
-# Combining everything
+The Microsoft.Data.Sqlite is a seemingly good candidate for Duplicati:
 
-Go with unchanged queries, adding the indices, using prepared statements, Microsoft.Data.Sqlite for asynchronous operations, and finally the PRAGMAs to optimize the database.
+- It is bundled with the newest SQLite binaries, so we don't have to compile it ourselves.
+- It is a modern first-class ADO.NET provider for SQLite, offering better performance and more features than the older System.Data.SQLite.
+- It has a more stringent interface, making it easier to work with and reducing the likelihood of errors by reducing implicit side-effects.
+- It has great asynchronous support, making it easier to build responsive applications and performs well with high-concurrency workloads, such as Duplicati.
 
-Aggregated, we went from X to Y, leading to a Z% speedup.
+All of these pros triggered the integration of this as a new backend in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
-Show scaling graphs.
+While not a complete benchmark, we'll quickly compare the performance of backup, recreate and restore in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database.
+
+| Metric            | Previous Version (2.1.0.120) | New Version (2.1.125) | Speedup |
+| ----------------- | ---------------------------- | --------------------- | ------- |
+| Backup time (s)   | 52.45                        | 52.32                 | 0.24 %  |
+| Recreate time (s) |                              |                       |         |
+| Restore time (s)  | 22.00                        | 20.00                 | 10.09 % |
+
+Duration of backup: 00:00:52.4543600
+Duration of restore: 00:00:22
+Duration of backup: 00:00:52.3233900
+Duration of restore: 00:00:20
 
 # Future work
 
-Revisit Duplicati to see that these optimizations do in fact speed up the process.
+While this blog post focuses on SQLite, it has still been with Duplicati in mind. While we have made a light investigation into the effects on Duplicati, a more extensive analysis is needed to fully optimize database accesses. Some parts will require new database schemas, some modifications to the queries and indices, and potentially new manual caching strategies.
 
-Batching / bulk inserts. MSSqlite allows for bulk inserts. Maybe there's value in keeping a small batch in memory, flushing it to the database periodically. This is only true if the bulk inserts on their own are faster than individual inserts.
+Microsoft.Data.Sqlite allows for bulk inserts. Maybe there's value in keeping a small batch in memory, flushing it to the database periodically. This is only true if the bulk inserts on their own are faster than individual inserts.
 
 # Conclusion
 
-Immense speed.
+In this blog post we've dived into the performance of SQLite through various configurations in C++ and through different .NET providers.
 
-Setup the Duplicati repo to run the benchmark against:
+Changing the schema can have a significant impact on performance, but the one already employed by Duplicati seems to strike a good balance between complexity and performance. There is a potential for about 20 % improvement by changing the schema, which is left for later as it requires some restructuring of the codebase.
 
-```bash
-git clone git@github.com:duplicati/duplicati.git data_duplicati_repo
-```
+We've seen how pragmas can be used to squeeze extra performance out of SQLite, providing up to 5x improvements in certain scenarios.
 
-It is faster to insert the rows without the index.
-However, it's not faster if the index needs to be created afterwards, as that requires a full table scan and sort.
-Managing the index during insertion is faster, at least for the multi column index.
+We've seen how parallel queries can further enhance read performance, but severely negatively impact write performance due to increased contention. If concurrent writing to the database is required, it may be worthwhile to manually implement caching strategies, both to batch writes into larger transactions, and to minimize the time the database is locked. Currently in Duplicati, parallel database access is only leveraged in the restore flow, which is a read-heavy operation database-wise.
 
-TODO try to fill into a temp table without the index, then insert the temp table sorted by the index, which should speed up things.
+We've seen how large batches can significantly improve performance (up to 66x), especially for write-heavy operations. Like with the parallel effects, it could be worthwhile to group writes into a cached batch, flushing it to the database periodically.
 
-Changing sqlite (system.data and microsoft) backend did not perform much different from the duplicati backend.
-
-Only looking up one of the two columns (e.g. either hash or length) is faster than looking up in a multi-column index.
-
-Depending on the amount of clashes for each column, filtering afterwards can be faster.
-
-TODO reflect against Duplicati; try to correlate the number of blocks to the the size of the data backed up, to relate the performance numbers to how Duplicati would perform (or at least how the database accesses would perform) - hopefully leading to that the database is now not the bottleneck.
+Finally, we've seen how C# is competitive to C++ in terms of SQLite performance. We've also seen how the Microsoft.Data.Sqlite library provides better performance, a more stringent interface, and improved support for asynchronous operations, which primed the new backend implemented in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
