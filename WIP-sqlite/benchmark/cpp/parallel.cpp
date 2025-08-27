@@ -496,7 +496,8 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     {
         sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         uint64_t blockset_id = (rng() % max_blockset) + 1;
-        uint64_t expected_count = blockset_count(blockset_id, entries);
+        // TODO when verifying (i.e. not benchmarking), uncomment the following line and the later check.
+        // uint64_t expected_count = blockset_count(blockset_id, entries);
         sqlite3_bind_int64(stmt, 1, blockset_id);
         uint64_t count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW)
@@ -525,11 +526,12 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         }
         sqlite3_reset(stmt);
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-        if (!assert_value_matches(expected_count, count, "Blockset count check"))
-        {
-            return_code = -1;
-            return;
-        }
+        // TODO this check is for verification
+        // if (!assert_value_matches(expected_count, count, "Blockset count check"))
+        //{
+        //     return_code = -1;
+        //     return;
+        // }
         num_rows += count;
         if (num_rows > runs)
             break;
