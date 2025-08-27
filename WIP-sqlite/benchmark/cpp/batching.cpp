@@ -180,8 +180,7 @@ void measure_insert(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
             sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         }
     }
-    if (config.num_batch == 0 || runs % config.num_batch != 0)
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt);
 
@@ -262,8 +261,7 @@ void measure_select(int tid, uint64_t runs, std::vector<std::string> &pragmas, C
             sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         }
     }
-    if (config.num_batch == 0 || runs % config.num_batch != 0)
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt);
     sqlite3_close(db);
@@ -385,10 +383,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
             sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         }
     }
-    if (config.num_batch > 0 && runs % config.num_batch != 0)
-    {
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt_select);
     sqlite3_finalize(stmt_insert);
@@ -473,10 +468,7 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         }
         num_rows += 2;
     };
-    if (config.num_batch > 0 && runs % config.num_batch != 0)
-    {
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-    }
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt_insert);
     sqlite3_finalize(stmt_select);
@@ -571,8 +563,7 @@ void measure_join(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
         if (num_rows > runs)
             break;
     };
-    if (config.num_batch > 0 && runs % config.num_batch != 0)
-        sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt);
     sqlite3_close(db);
