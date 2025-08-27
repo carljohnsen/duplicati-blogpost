@@ -642,7 +642,8 @@ int main(int argc, char *argv[])
         {"journal_delete", {"PRAGMA journal_mode = DELETE;"}},
         {"journal_memory", {"PRAGMA journal_mode = MEMORY;"}},
         {"journal_wal", {"PRAGMA journal_mode = WAL;"}},
-        {"journal_off", {"PRAGMA journal_mode = OFF;"}},
+        // Rollback has undefined behaviour for journal_mode = OFF
+        //{"journal_off", {"PRAGMA journal_mode = OFF;"}},
         //
         {"cache_size_2M", {"PRAGMA cache_size = -2000;"}},
         {"cache_size_4M", {"PRAGMA cache_size = -4000;"}},
