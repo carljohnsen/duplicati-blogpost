@@ -218,8 +218,6 @@ The bars for the size-based indexes are there, but are too small to properly ren
 
 In a sub-conclusion; if the workload is write-heavy, something like a size-based index could be benificial, at the cost of poor read performance. For a read-heavy or mixed workload, the normal indexes are the better choice, providing better overall performance.
 
-TODO BLOB
-
 ## PRAGMAs
 
 A less intrusive way to optimize SQLite is to use PRAGMAs, which are special commands that can be used to change the behavior of the SQLite engine.
@@ -357,10 +355,10 @@ While not a complete benchmark, we'll quickly compare the performance of backup,
 
 | Metric            | Previous Version (2.1.0.120) | New Version (2.1.125) | Speedup |
 | ----------------- | ---------------------------- | --------------------- | ------- |
-| Backup time (s)   | 52.45                        | 52.32                 | 0.24 %  |
-| Recreate time (s) |                              |                       |         |
-| Restore time (s)  | 22.00                        | 20.00                 | 10.09 % |
-| Delete time (s)   |                              |                       |         |
+| Backup time (s)   |                              |                       | A %     |
+| Recreate time (s) |                              |                       | B %     |
+| Restore time (s)  |                              |                       | C %     |
+| Delete time (s)   |                              |                       | D %     |
 
 TODO ABCD numbers
 
