@@ -193,7 +193,7 @@ We will investigate the following:
 12. 10 with the index on `h0` only, further filtering in userland.
 13. 10 with the index on `Size` only, further filtering in userland.
 
-These variations lets us test whether changing the schema or indexes can improve performance. Let's start by looking at the performance of insert:
+These variations lets us test whether changing the schema or indexes can improve performance. For each variation we adapt the insert and select queries to match the schema and index according to the specification. Let's start by looking at the performance of insert:
 
 ![](benchmark/figures_mac/schema_insert.png)
 
