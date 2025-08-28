@@ -35,9 +35,9 @@ The reason for using SQLite is that it is a self-contained file-based database, 
 Furthermore, it's a mature and well-tested database engine, it's lightweight, and it has a small footprint, all of which should make it a good fit for Duplicati, both in terms of performance, stability, deployability, and ease of use.
 
 However, achieving high performance with SQLite requires some tuning and optimizations, especially when dealing with large datasets and high query rates.
-This became especially apparent while investigating the performance of Duplicati's recreate database operation.
+This became especially apparent as SQLite should be able to handle close to 1M queries per second, but during Duplicati's recreate database operation we saw significantly lower performance.
 Here we found that a considerable amount of time spent was a series of SQL queries, especially the pattern; `SELECT`, return row if found, otherwise, `INSERT` a new row.
-As the database grew, each query would take longer and longer, starting at around 200k queries per second, ending below 50k queries per second, with a negative trend.
+As the database grew, each query would take longer and longer, starting at around 200k queries per second, ending below 50k queries per second, with steadily decreasing performance.
 This led to this investigation, as SQLite is supposed to be fast, and it was not performing as expected.
 Even the initial throughput of 200k queries per second was nowhere near the 1M queries per second that SQLite should be able to do.
 
@@ -94,7 +94,7 @@ INSERT INTO Block (Hash, Size) VALUES (?, ?);
 
 As mentioned, this is a common pattern in Duplicati, where we first try to select a row, and if it does not exist, we insert it.
 We will benchmark two different approaches to this:
-Two statements, with the the check performed in C#:
+Two statements, with the check performed in C#:
 
 ```sql
 SELECT ID FROM Block WHERE Hash = ? AND Size = ?;
@@ -171,7 +171,8 @@ For others, we'll be measuring the performance of a transaction, which either co
 
 ## Indexes and schema changes
 
-Here the database is created from scratch for every benchmark, because we want to investigate the effect on the indices as if they're built "on-the-fly". Deleting and creating the indices only could result in better balance, and it'll put the database in an incorrect state (compared to what we'd expect in the real world).
+Since our motivation came from Duplicati’s slowdown on basic queries, we start by looking at whether changes to the schema or indexes alone could resolve the performance gap. We'll only be looking into insert and select benchmarks here.
+The database is created from scratch for every benchmark, because we want to investigate the effect on the indices as if they're built "on-the-fly". Deleting and creating the indices only could result in better balance, and it'll put the database in an incorrect state (compared to what we'd expect in the real world).
 
 Duplicati already uses indices, so there's not much we can do in terms of adding new indices.
 However, we can modify the schema to ease the work needed by the database engine, hopefully leading to better performance.
@@ -201,7 +202,7 @@ The rest are grouped towards the bottom, with the original (1.) schema performin
 
 ![](benchmark/figures_mac/schema_insert_bar_e7.png)
 
-We see the same trends as before: size-based is faster, index only on hashes does'nt provide much. However, it's interesting to note that (10.) performs better than the other "normal" schemas.
+We see the same trends as before: size-based is faster, index only on hashes doesn't provide much. However, it's interesting to note that (10.) performs better than the other "normal" schemas.
 
 Let's turn the attention to select performance:
 
@@ -216,7 +217,7 @@ The bars for the size-based indexes are there, but are too small to properly ren
 1. Less data to transfer back and forth, which should also make the index lookups faster
 2. With each sub hash being an integer, the comparison should be faster as well.
 
-In a sub-conclusion; if the workload is write-heavy, something like a size-based index could be benificial, at the cost of poor read performance. For a read-heavy or mixed workload, the normal indexes are the better choice, providing better overall performance.
+In a sub-conclusion; if the workload is write-heavy, something like a size-based index could be beneficial, at the cost of poor read performance. For a read-heavy or mixed workload, the normal indexes are the better choice, providing better overall performance. However, as a schema change is an intrusive operation requiring a rippled effect of changes in the codebase and breaking compatibility, it is left as a later task in Duplicati.
 
 ## PRAGMAs
 
@@ -241,7 +242,7 @@ We've run the benchmarks with the same sizes as before, but the biggest impact o
 ![](benchmark/figures_mac/pragmas_join_e6.png)
 ![](benchmark/figures_mac/pragmas_blockset_e6.png)
 
-All of these plots show great performance gains, 1.50 - 1.82 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement for cranking up the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
+All of these plots show great performance gains, 1.50 - 1.82 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement by increasing the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
 
 If we focus the relative performance of 'normal' and 'combination', we can show a plot for all benchmarks across all sizes:
 
@@ -251,6 +252,7 @@ We see that for the larger sizes, the combination of pragmas outperforms the nor
 
 ## Parallelization
 
+While the PRAGMAs resulted in measurable performance improvements, we also want to see if we can increase performance through parallelization.
 This benchmark evaluates the impact of launching multiple threads accessing the database at the same time. Compared to the previous benchmarks, this changes the transaction strategies. First of all, the transactions become deferred, where they start as a read transaction (allowing concurrent access) and are lifted to a write transaction only when necessary. As a result, each thread must perform one operation in one transaction to ensure data consistency. Second of all, as each step can potentially block, measuring each step is no longer interesting. Instead, we look at the wall clock of running all of the operations, and divide the time by the number of processed elements. Each thread will receive its own set of data to process.
 
 Let's start by looking at the read-heavy benchmarks, 'select' and 'join':
@@ -270,9 +272,11 @@ Here we see an increase going from 1 to 2 threads, but adding more threads after
 
 We see a similar story to that of the write benchmarks. So for a read-heavy workload, parallelization can provide significant benefits, but as soon as the workload has to perform writes, the benefits diminish. This is especially due to the small transaction size (as we'll show in the next section), which is a requirement for data consistency.
 
+In conclusion; while parallelization can improve performance for read-heavy workloads, it harms write-heavy workloads, making it a trade-off to be considered.
+
 ## Transaction batches
 
-Looking at the plots between parallel and pragmas, we see a huge difference in the y axis scale due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
+Looking at the plots between parallel and pragmas, we see a huge difference in the y-axis scale due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
 
 ![](benchmark/figures_mac/batching_insert.png)
 ![](benchmark/figures_mac/batching_select.png)
@@ -281,7 +285,7 @@ Looking at the plots between parallel and pragmas, we see a huge difference in t
 ![](benchmark/figures_mac/batching_join.png)
 ![](benchmark/figures_mac/batching_new_blockset.png)
 
-Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. In short, if one wants to maximize performance, one should have as large transactions as possible. Usually other factors have a greater say on when to commit a transaction, such as keeping writes visible during concurrent accesses or data consistency in the events of a crash.
+Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. In short, if one wants to maximize performance, one should have as large transactions as possible. Usually other factors have a greater influence on when to commit a transaction, such as keeping writes visible during concurrent accesses or data consistency in the event of a crash.
 The fact that the join benchmark seems unphased by batch size makes sense, as each statement already affects multiple rows, reducing the impact of transaction overhead.
 
 # Backends
