@@ -35,7 +35,7 @@ The reason for using SQLite is that it is a self-contained file-based database, 
 Furthermore, it's a mature and well-tested database engine, it's lightweight, and it has a small footprint, all of which should make it a good fit for Duplicati, both in terms of performance, stability, deployability, and ease of use.
 
 However, achieving high performance with SQLite requires some tuning and optimizations, especially when dealing with large datasets and high query rates.
-This became especially apparent as SQLite should be able to handle close to 1M queries per second, but during Duplicati's recreate database operation we saw significantly lower performance.
+This became especially apparent as [SQLite should be able to handle close to 1M queries per second](https://www.powersync.com/blog/sqlite-optimizations-for-ultra-high-performance), but during Duplicati's recreate database operation we saw significantly lower performance.
 Here we found that a considerable amount of time spent was a series of SQL queries, especially the pattern; `SELECT`, return row if found, otherwise, `INSERT` a new row.
 As the database grew, each query would take longer and longer, starting at around 200k queries per second, ending below 50k queries per second, with steadily decreasing performance.
 This led to this investigation, as SQLite is supposed to be fast, and it was not performing as expected.
@@ -193,11 +193,12 @@ We will investigate the following:
 12. 10 with the index on `h0` only, further filtering in userland.
 13. 10 with the index on `Size` only, further filtering in userland.
 
-Let's start by looking at the performance of insert:
+These variations lets us test whether changing the schema or indexes can improve performance. Let's start by looking at the performance of insert:
 
 ![](benchmark/figures_mac/schema_insert.png)
 
-Here we see that all of the size-based index runs out perform all the others. This makes sense, as there's less work in maintaining the overall index, leading to most inserts ending up in the same bucket. The next two winners are the schema 10 with index on either `(h0)` or `(h0, size)`, with the same argument as before to why they're performant.
+Size-based indexes consistently outperform the others.
+This makes sense, as there's less work in maintaining the overall index, leading to most inserts ending up in the same bucket. The next two winners are the schema 10 with index on either `(h0)` or `(h0, size)`, with the same argument as before to why they're performant.
 The rest are grouped towards the bottom, with the original (1.) schema performing the worst. If we focus on the largest run:
 
 ![](benchmark/figures_mac/schema_insert_bar_e7.png)
@@ -212,7 +213,7 @@ In this benchmark, the roles have reversed; the size-based indexes are no longer
 
 ![](benchmark/figures_mac/schema_select_bar_e7.png)
 
-The bars for the size-based indexes are there, but are too small to properly render on the image. The hash-based ones also perform quite poorly. So for a select heavy workload, the normal indexes are the way to go. The winner is the (10.) schema, which is about 20 % more performant than (1.), meaning there could be some, but not much, value in changing to this scheme. There are two reasons behind its performance:
+The bars for the size-based indexes are there, but are too small to properly render on the image. The hash-based ones also perform quite poorly. So for a select heavy workload, the normal indexes are the way to go. The winner is the (10.) schema, which is about 20 % faster than (1.), meaning there could be some, but not much, value in changing to this scheme. There are two reasons behind its performance:
 
 1. Less data to transfer back and forth, which should also make the index lookups faster
 2. With each sub hash being an integer, the comparison should be faster as well.
@@ -248,11 +249,11 @@ If we focus the relative performance of 'normal' and 'combination', we can show 
 
 ![](benchmark/figures_mac/pragmas_comparison.png)
 
-We see that for the larger sizes, the combination of pragmas outperforms the normal configuration. For the smaller sizes, the pragmas do not provide much benefit, performing slightly (~0.96) worse in some cases.
+We see that for the larger sizes, the combination of pragmas outperforms the normal configuration. For the smaller sizes, the pragmas do not provide much benefit, in some cases even performing slightly worse (~0.96).
 
 ## Parallelization
 
-While the PRAGMAs resulted in measurable performance improvements, we also want to see if we can increase performance through parallelization.
+While the PRAGMAs resulted in measurable performance improvements, we also want to see if we can increase performance through parallelization as many modern performance optimizations leverage it.
 This benchmark evaluates the impact of launching multiple threads accessing the database at the same time. Compared to the previous benchmarks, this changes the transaction strategies. First of all, the transactions become deferred, where they start as a read transaction (allowing concurrent access) and are lifted to a write transaction only when necessary. As a result, each thread must perform one operation in one transaction to ensure data consistency. Second of all, as each step can potentially block, measuring each step is no longer interesting. Instead, we look at the wall clock of running all of the operations, and divide the time by the number of processed elements. Each thread will receive its own set of data to process.
 
 Let's start by looking at the read-heavy benchmarks, 'select' and 'join':
@@ -272,7 +273,7 @@ Here we see an increase going from 1 to 2 threads, but adding more threads after
 
 We see a similar story to that of the write benchmarks. So for a read-heavy workload, parallelization can provide significant benefits, but as soon as the workload has to perform writes, the benefits diminish. This is especially due to the small transaction size (as we'll show in the next section), which is a requirement for data consistency.
 
-In conclusion; while parallelization can improve performance for read-heavy workloads, it harms write-heavy workloads, making it a trade-off to be considered.
+In conclusion, while parallelization can improve performance for read-heavy workloads, but for write-heavy workloads, parallelization will likely hurt performance.
 
 ## Transaction batches
 
@@ -285,12 +286,13 @@ Looking at the plots between parallel and pragmas, we see a huge difference in t
 ![](benchmark/figures_mac/batching_join.png)
 ![](benchmark/figures_mac/batching_new_blockset.png)
 
-Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. In short, if one wants to maximize performance, one should have as large transactions as possible. Usually other factors have a greater influence on when to commit a transaction, such as keeping writes visible during concurrent accesses or data consistency in the event of a crash.
-The fact that the join benchmark seems unphased by batch size makes sense, as each statement already affects multiple rows, reducing the impact of transaction overhead.
+Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. The fact that the join benchmark seems unfazed by batch size makes sense, as each statement already affects multiple rows, reducing the impact of transaction overhead.
+
+In short, if one wants to maximize performance, one should have as large transactions as possible. However, usually other factors have a greater influence on when to commit a transaction, such as keeping writes visible during concurrent accesses or data consistency in the event of a crash, leading to more frequent commits.
 
 # Backends
 
-Having found the most performant options, we'll transition back to Duplicati by returning to the C# implementation.
+Having explored SQLite itself, we'll transition back to the C# layer that Duplicati actually uses.
 In .NET, there are multiple backends to choose from when working with SQLite databases, leading to another tunable aspect.
 We'll do a short look into each of them, their pros/cons, and their performance characteristics.
 
@@ -359,10 +361,12 @@ While not a complete benchmark, we'll quickly compare the performance of backup,
 
 | Metric            | Previous Version (2.1.0.120) | New Version (2.1.125) | Speedup |
 | ----------------- | ---------------------------- | --------------------- | ------- |
-| Backup time (s)   |                              |                       | A %     |
-| Recreate time (s) |                              |                       | B %     |
-| Restore time (s)  |                              |                       | C %     |
-| Delete time (s)   |                              |                       | D %     |
+| Backup time (s)   | 1039                         | 668                   | 1.55    |
+| Recreate time (s) | 1768                         | 1869                  | 0.95    |
+| Restore time (s)  | 256                          | 231                   | 1.10    |
+| Delete time (s)   | 291                          | 469                   | 0.62    |
+
+We see a nice improvement in backup and restore times, while recreate and delete times have slightly increased. This indicates an improvement in managing the blocks in the database, but it also suggests that further optimization and deeper analysis is needed to properly understand the underlying causes.
 
 TODO ABCD numbers
 
