@@ -12,21 +12,23 @@ if [ ! -d ../../data/testdata ]; then
   dotnet run -c Release -- create ../../../../data/testdata --max-file-size 104857600 --max-total-size 10737418240 --file-count 10000 --sparse-factor 30
   cd ../../
 fi
-dbpath=benchmarking.sqlite
+dbpath=$(pwd)/benchmarking.sqlite
+rm -rf ../../data/restore ../../data/backup $dbpath* ~/.config/Duplicati/
 duplicati_cli=Executables/net8/Duplicati.CommandLine/bin/Release/net8.0/Duplicati.CommandLine
-$duplicati_cli backup ../../data/backup --passphrase=1234 --log-file=120-backup.log --dbpath=$dbpath --dblock-size=1mb --blocksize=1kb ../../data/testdata
-rm $dbpath
-$duplicati_cli repair ../../data/backup --passphrase=1234 --log-file=120-repair.log
-$duplicati_cli restore ../../data/backup --passphrase=1234 --log-file=120-restore.log --restore-path=../../data/restore
-$duplicati_cli delete ../../data/backup --passphrase=1234 --log-file=120-delete.log --version=0 --allow-full-removal=true
-rm -rf ../../data/restore ../../data/backup
+$duplicati_cli backup ../../data/backup --passphrase=1234 --log-file=120-backup.log --log-file-log-level=Information --dbpath=$dbpath --dblock-size=1mb --blocksize=1kb ../../data/testdata
+rm $dbpath*
+$duplicati_cli repair ../../data/backup --passphrase=1234 --log-file=120-repair.log --log-file-log-level=Information
+$duplicati_cli restore ../../data/backup --passphrase=1234 --log-file=120-restore.log --log-file-log-level=Information --restore-path=../../data/restore --restore-channel-buffer-size=1024 --restore-file-processors=8
+$duplicati_cli delete ../../data/backup --passphrase=1234 --log-file=120-delete.log --log-file-log-level=Information --version=0 --allow-full-removal=true
+rm -rf ../../data/restore ../../data/backup $dbpath* ~/.config/Duplicati/
+
 git checkout v2.1.0.125_canary_2025-07-15
 dotnet build -c Release
-$duplicati_cli backup ../../data/backup --passphrase=1234 --log-file=125-backup.log --dbpath=$dbpath --dblock-size=1mb --blocksize=1kb ../../data/testdata
-rm $dbpath
-$duplicati_cli repair ../../data/backup --passphrase=1234 --log-file=125-repair.log
-$duplicati_cli restore ../../data/backup --passphrase=1234 --log-file=125-restore.log --restore-path=../../data/restore
-$duplicati_cli delete ../../data/backup --passphrase=1234 --log-file=125-delete.log --version=0 --allow-full-removal=true
-rm -rf ../../data/restore ../../data/backup
+$duplicati_cli backup ../../data/backup --passphrase=1234 --log-file=125-backup.log --log-file-log-level=Information --dbpath=$dbpath --dblock-size=1mb --blocksize=1kb ../../data/testdata
+rm $dbpath*
+$duplicati_cli repair ../../data/backup --passphrase=1234 --log-file=125-repair.log --log-file-log-level=Information
+$duplicati_cli restore ../../data/backup --passphrase=1234 --log-file=125-restore.log --log-file-log-level=Information --restore-path=../../data/restore --restore-channel-buffer-size=1024 --restore-file-processors=8
+$duplicati_cli delete ../../data/backup --passphrase=1234 --log-file=125-delete.log --log-file-log-level=Information --version=0 --allow-full-removal=true
+rm -rf ../../data/restore ../../data/backup $dbpath* ~/.config/Duplicati/
 git checkout v2.1.0.120_canary_2025-06-24
 cd ../../
