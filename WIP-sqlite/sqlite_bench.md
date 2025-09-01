@@ -10,9 +10,7 @@ While the work is motivated by the Duplicati project, it is not limited to it, l
 - Parallelizing database operations with multiple connections is beneficial for read-heavy workloads, but quickly deteriorates performance for write-heavy workloads.
 - SQLite favors large transactions, providing over 66x performance for certain workloads.
 - The C# SQLite providers are competitive to the C API, with Microsoft.Data.Sqlite being the fastest.
-- Implementing the asynchronous Microsoft.Data.Sqlite backend in Duplicati has shown promising results. With Duplicati in a database stressing state it now performs Ax, Bx, Cx, and Dx times better for backup, recreate, restore, and delete operations respectively.
-
-TODO ABCD numbers
+- Implementing the asynchronous Microsoft.Data.Sqlite backend in Duplicati has shown promising results. With Duplicati in a database stressing state it now performs 1.53x, 1.10x, 1.19x, and 1.33x times better for backup, recreate, restore, and delete operations respectively.
 
 ## Machine setup
 
@@ -357,18 +355,16 @@ The Microsoft.Data.Sqlite is a seemingly good candidate for Duplicati:
 
 All of these pros triggered the integration of this as a new backend in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
-While not a complete benchmark, we'll quickly compare the performance of backup, recreate, restore, and delete in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database.
+While not a complete benchmark, we'll quickly compare the performance of backup, recreate, restore, and delete in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database. Finally, we set the cache size to the same as the default for the new backend to make them more comparable.
 
 | Metric            | Previous Version (2.1.0.120) | New Version (2.1.125) | Speedup |
 | ----------------- | ---------------------------- | --------------------- | ------- |
-| Backup time (s)   | 1039                         | 668                   | 1.55    |
-| Recreate time (s) | 1768                         | 1869                  | 0.95    |
-| Restore time (s)  | 256                          | 231                   | 1.10    |
-| Delete time (s)   | 291                          | 469                   | 0.62    |
+| Backup time (s)   | 1026                         | 667                   | 1.53    |
+| Recreate time (s) | 2100                         | 1905                  | 1.10    |
+| Restore time (s)  | 277                          | 231                   | 1.19    |
+| Delete time (s)   | 629                          | 472                   | 1.33    |
 
-We see a nice improvement in backup and restore times, while recreate and delete times have slightly increased. This indicates an improvement in managing the blocks in the database, but it also suggests that further optimization and deeper analysis is needed to properly understand the underlying causes.
-
-TODO ABCD numbers
+We see a nice improvement across the four operations, with the most significant gains in backup and delete times. While the speedups aren't enormous, they do indicate that the new backend is more efficient in handling these operations, as the change between the two versions only involves updates to the database access layer.
 
 # Future work
 
@@ -390,6 +386,4 @@ We've seen how large batches can significantly improve performance (up to 66x), 
 
 Finally, we've seen how C# is competitive to C++ in terms of SQLite performance. We've also seen how the Microsoft.Data.Sqlite library provides better performance, a more stringent interface, and improved support for asynchronous operations, which primed the new backend implemented in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
-Implementing the new backend along with the pragmas, Duplicati in a database stressing state now performs Ax, Bx, Cx, and Dx times better for backup, recreate, restore, and delete operations respectively.
-
-TODO ABCD numbers
+Implementing the new backend along with the pragmas, Duplicati in a database stressing state now performs 1.53x, 1.10x, 1.19x, and 1.33x times better for backup, recreate, restore, and delete operations respectively.
