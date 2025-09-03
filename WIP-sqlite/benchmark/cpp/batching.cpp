@@ -759,7 +759,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
             sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         }
     }
-    if (config.num_batch > 0 && runs % config.num_batch != 0)
+    if (config.num_batch == 0 || config.num_batch != 0)
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt_start_blockset);
