@@ -190,10 +190,10 @@ namespace sqlite_bench
                 BindText(m_command_select, 1, entry.Hash);
                 BindInt64(m_command_select, 2, entry.Size);
                 int rc = sqlite3_step(m_command_select);
-                long bid = -1;
-                if (rc == SQLITE_DONE)
+                long bid = rc == SQLITE_DONE ? -1 : sqlite3_column_int64(m_command_select, 0);
+                Reset(m_command_select);
+                if (bid == -1)
                 {
-                    Reset(m_command_select);
                     BindText(m_command_blockset_insert_block, 1, entry.Hash);
                     BindInt64(m_command_blockset_insert_block, 2, entry.Size);
                     ExecuteNonQuery(m_command_blockset_insert_block);
@@ -201,8 +201,6 @@ namespace sqlite_bench
                 }
                 else
                 {
-                    bid = sqlite3_column_int64(m_command_select, 0);
-                    Reset(m_command_select);
                     if (bid != entry.Id)
                         throw new Exception($"Failed to insert/lookup entry {entry.Id}, found {bid}");
                 }
