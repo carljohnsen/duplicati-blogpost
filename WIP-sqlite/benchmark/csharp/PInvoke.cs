@@ -72,6 +72,7 @@ namespace sqlite_bench
             Execute($"DELETE FROM BlocksetEntry WHERE BlocksetID >= {m_blocksets.Count}");
             Execute($"DELETE FROM Blockset WHERE ID >= {m_blocksets.Count}");
             Execute("COMMIT;");
+            Execute("PRAGMA wal_checkpoint(TRUNCATE);");
         }
 
         [Benchmark]

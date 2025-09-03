@@ -101,6 +101,13 @@ namespace sqlite_bench
                 .ExecuteNonQuery();
 
             transaction.Commit();
+
+            if (use_pragmas)
+            {
+                cmd.Transaction = null;
+                cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+                cmd.ExecuteNonQuery();
+            }
         }
 
         [Benchmark]
