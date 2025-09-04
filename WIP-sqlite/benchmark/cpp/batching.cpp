@@ -300,7 +300,7 @@ void measure_xor1(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     for (uint64_t i = 0; i < runs; i++)
     {
         Entry entry;
-        bool create_new = (rng() % 100) >= 25;
+        bool create_new = (rng() % 100) >= 50;
         if (create_new)
         {
             entry = {
@@ -422,7 +422,7 @@ void measure_xor2(int tid, uint64_t runs, std::vector<std::string> &pragmas, Con
     for (uint64_t i = 0; i < runs; i++)
     {
         Entry entry;
-        bool create_new = (rng() % 100) >= 25;
+        bool create_new = (rng() % 100) >= 50;
         if (create_new)
         {
             entry = {
@@ -725,7 +725,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
     for (uint64_t i = 0; i < runs; i++)
     {
         Entry entry;
-        if ((rng() % 100) >= (100 - 5)) // 50% chance to create a new entry
+        if ((rng() % 100) >= (100 - 50)) // 50% chance to create a new entry
         {
             entry = {
                 (uint64_t)-1,
@@ -745,7 +745,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
         }
 
         // With some probability, create a new blockset
-        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        if ((rng() % 100) < 5) // 5% chance to create a new blockset
         {
             if (start_new_blockset() != 0)
             {
@@ -759,7 +759,7 @@ void measure_new_blockset(int tid, uint64_t runs, std::vector<std::string> &prag
             sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr);
         }
     }
-    if (config.num_batch > 0 && runs % config.num_batch != 0)
+    if (config.num_batch == 0 || config.num_batch != 0)
         sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
 
     sqlite3_finalize(stmt_start_blockset);

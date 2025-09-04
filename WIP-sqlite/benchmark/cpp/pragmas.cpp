@@ -241,7 +241,7 @@ int measure_select(sqlite3 *db, Config &config, std::mt19937 &rng, const std::ve
         return 0;
     };
 
-    if (measure(db, config, rng, select_inner, report_name, 0, entries) != 0)
+    if (measure(db, config, rng, select_inner, report_name, -1, entries) != 0)
         return -1;
 
     sqlite3_finalize(stmt);
@@ -528,7 +528,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
             return -1;
 
         // With some probability, create a new blockset
-        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        if ((rng() % 100) < 5) // 5% chance to create a new blockset
         {
             if (start_new_blockset(db, &blockset_id) != 0)
                 return -1;
@@ -565,7 +565,7 @@ int measure_new_blockset(sqlite3 *db, Config &config, std::mt19937 &rng, const s
         times.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
 
         // With some probability, create a new blockset
-        if ((rng() % 100) < 10) // 10% chance to create a new blockset
+        if ((rng() % 100) < 5) // 5% chance to create a new blockset
         {
             if (start_new_blockset(db, &blockset_id) != 0)
                 return -1;
