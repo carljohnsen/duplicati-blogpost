@@ -14,17 +14,18 @@ While the work is motivated by the Duplicati project, it is not limited to it, l
 
 ## Machine setup
 
-The following table shows the different machines mentioned:
+The following table shows the different machines used alongside which compilers used:
 
-| Machine          | CPU                                    | RAM                                  | Disk (theoretical peak)                | OS                   | .NET    |
-| ---------------- | -------------------------------------- | ------------------------------------ | -------------------------------------- | -------------------- | ------- |
-| MacBook Pro 2021 | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | 1 NVMe SSD ~5 GB/s                     | macOS Sequoia 15.6.1 | 9.0.101 |
-| AMD 7975WX       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.3 LTS   | 9.0.300 |
-| AMD 1950X        | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | 2 PCIe 3.0 NVMe SSD in Raid 0 ~ 8 GB/s | Ubuntu 24.04.1 LTS   | 9.0.101 |
-| Intel W5-2445    | (x86_64) 10-core 3.1 GHz (4.6)         | 128 GB DDR5-4800 4-channel ~150 GB/s | 1 PCIe 4.0 NVMe SSD ~8 GB/s            | Ubuntu 22.04.5 LTS   | TODO    |
-| AMD 9800X3D      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | TODO    |
+| Machine (label)        | CPU                                    | RAM                                  | Disk (theoretical peak)                | OS                   | .NET    | C++                       | SQLite |
+| ---------------------- | -------------------------------------- | ------------------------------------ | -------------------------------------- | -------------------- | ------- | ------------------------- | ------ |
+| MacBook Pro 2021 (mac) | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | 1 NVMe SSD ~5 GB/s                     | macOS Sequoia 15.6.1 | 9.0.101 | g++ 15.1.0                | 3.43.2 |
+| AMD 1950X (t01)        | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | 2 PCIe 3.0 NVMe SSD in Raid 0 ~ 8 GB/s | Ubuntu 24.04.1 LTS   | 9.0.101 | g++ 13.3.0                | 3.45.1 |
+| AMD 7975WX (t02)       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.3 LTS   | 9.0.300 | g++ 13.3.0                | 3.45.1 |
+| AMD 9800X3D (win)      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | TODO    | Microsoft C++ (MSVC) TODO | 3.50.4 |
 
-The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available.
+The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available in the different figures folders [on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark) alongside the benchmarking scripts, artefacts, and programs.
+
+TODO update link when publishing.
 
 # Introduction
 
@@ -193,23 +194,23 @@ We will investigate the following:
 
 These variations lets us test whether changing the schema or indexes can improve performance. For each variation we adapt the insert and select queries to match the schema and index according to the specification. Let's start by looking at the performance of insert:
 
-![](benchmark/figures_mac/schema_insert.png)
+![](benchmark/figures_win/schema_insert.png)
 
 Size-based indexes consistently outperform the others.
 This makes sense, as there's less work in maintaining the overall index, leading to most inserts ending up in the same bucket. The next two winners are the schema 10 with index on either `(h0)` or `(h0, size)`, with the same argument as before to why they're performant.
 The rest are grouped towards the bottom, with the original (1.) schema performing the worst. If we focus on the largest run:
 
-![](benchmark/figures_mac/schema_insert_bar_e7.png)
+![](benchmark/figures_win/schema_insert_bar_e7.png)
 
 We see the same trends as before: size-based is faster, index only on hashes doesn't provide much. However, it's interesting to note that (10.) performs better than the other "normal" schemas.
 
 Let's turn the attention to select performance:
 
-![](benchmark/figures_mac/schema_select.png)
+![](benchmark/figures_win/schema_select.png)
 
 In this benchmark, the roles have reversed; the size-based indexes are no longer the best performers. Instead, the "normal" indexes are now leading the pack, with the original (1.) schema performing surprisingly well. Interesting again, it seems that (10.) performs the best. Let's again look at the largest run:
 
-![](benchmark/figures_mac/schema_select_bar_e7.png)
+![](benchmark/figures_win/schema_select_bar_e7.png)
 
 The bars for the size-based indexes are there, but are too small to properly render on the image. The hash-based ones also perform quite poorly. So for a select heavy workload, the normal indexes are the way to go. The winner is the (10.) schema, which is about 20 % faster than (1.), meaning there could be some, but not much, value in changing to this scheme. There are two reasons behind its performance:
 
@@ -234,20 +235,20 @@ In addition to these individual PRAGMAs, we'll also test the normal behaviour (n
 
 We've run the benchmarks with the same sizes as before, but the biggest impact of the PRAGMAs was seen on 1e6 entries:
 
-![](benchmark/figures_mac/pragmas_insert_e6.png)
-![](benchmark/figures_mac/pragmas_select_e6.png)
-![](benchmark/figures_mac/pragmas_xor1_e6.png)
-![](benchmark/figures_mac/pragmas_xor2_e6.png)
-![](benchmark/figures_mac/pragmas_join_e6.png)
-![](benchmark/figures_mac/pragmas_blockset_e6.png)
+![](benchmark/figures_win/pragmas_insert_e6.png)
+![](benchmark/figures_win/pragmas_select_e6.png)
+![](benchmark/figures_win/pragmas_xor1_e6.png)
+![](benchmark/figures_win/pragmas_xor2_e6.png)
+![](benchmark/figures_win/pragmas_join_e6.png)
+![](benchmark/figures_win/pragmas_blockset_e6.png)
 
-All of these plots show great performance gains, 1.50 - 1.82 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement by increasing the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
+All of these plots show great performance gains, 1.47 - 5.21 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement by increasing the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
 
 If we focus the relative performance of 'normal' and 'combination', we can show a plot for all benchmarks across all sizes:
 
-![](benchmark/figures_mac/pragmas_comparison.png)
+![](benchmark/figures_win/pragmas_comparison.png)
 
-We see that for the larger sizes, the combination of pragmas outperforms the normal configuration. For the smaller sizes, the pragmas do not provide much benefit, in some cases even performing slightly worse (~0.96).
+We see that for the larger sizes, the combination of pragmas outperforms the normal configuration. For the smaller sizes, the pragmas do not provide much benefit, in some cases even performing slightly worse (~0.97).
 
 ## Parallelization
 
@@ -256,18 +257,18 @@ This benchmark evaluates the impact of launching multiple threads accessing the 
 
 Let's start by looking at the read-heavy benchmarks, 'select' and 'join':
 
-![](benchmark/figures_mac/parallel_select.png)
-![](benchmark/figures_mac/parallel_join.png)
+![](benchmark/figures_win/parallel_select.png)
+![](benchmark/figures_win/parallel_join.png)
 
 Here we see that both benchmarks benefit from parallelization, scaling nicely along with the number of threads until reaching the saturation point around 8 threads. While these two plots could indicate that parallelization is worth it, looking at the write-heavy benchmarks shows a different picture:
 
-![](benchmark/figures_mac/parallel_insert.png)
-![](benchmark/figures_mac/parallel_xor1.png)
-![](benchmark/figures_mac/parallel_xor2.png)
+![](benchmark/figures_win/parallel_insert.png)
+![](benchmark/figures_win/parallel_xor1.png)
+![](benchmark/figures_win/parallel_xor2.png)
 
 Here we see an increase going from 1 to 2 threads, but adding more threads after this point hurts the performance. This is likely due to lock contention inside of the database engine, which is expected. Finally, looking at the new blockset benchmark (which is a mix of read and write):
 
-![](benchmark/figures_mac/parallel_new_blockset.png)
+![](benchmark/figures_win/parallel_new_blockset.png)
 
 We see a similar story to that of the write benchmarks. So for a read-heavy workload, parallelization can provide significant benefits, but as soon as the workload has to perform writes, the benefits diminish. This is especially due to the small transaction size (as we'll show in the next section), which is a requirement for data consistency.
 
@@ -277,12 +278,12 @@ In conclusion, while parallelization can improve performance for read-heavy work
 
 Looking at the plots between parallel and pragmas, we see a huge difference in the y-axis scale due to how the transactions are controlled. In the parallel benchmark, we have to apply aggressive batching to keep the database in a consistent state. This is not a problem in the pragmas benchmark, since everything is performed in the same thread, requiring no synchronization. However, in Duplicati, we also commit the transaction at multiple points to ensure that the database is consistent in the event of a crash. This benchmark tries different batch sizes to see the impact of the batching strategy on performance.
 
-![](benchmark/figures_mac/batching_insert.png)
-![](benchmark/figures_mac/batching_select.png)
-![](benchmark/figures_mac/batching_xor1.png)
-![](benchmark/figures_mac/batching_xor2.png)
-![](benchmark/figures_mac/batching_join.png)
-![](benchmark/figures_mac/batching_new_blockset.png)
+![](benchmark/figures_win/batching_insert.png)
+![](benchmark/figures_win/batching_select.png)
+![](benchmark/figures_win/batching_xor1.png)
+![](benchmark/figures_win/batching_xor2.png)
+![](benchmark/figures_win/batching_join.png)
+![](benchmark/figures_win/batching_new_blockset.png)
 
 Here we see that anything that writes data benefits from larger batch sizes, as this reduces the overhead of transaction management. However, for read-heavy operations, the performance tends to plateau around 256. The fact that the join benchmark seems unfazed by batch size makes sense, as each statement already affects multiple rows, reducing the impact of transaction overhead.
 
@@ -330,25 +331,26 @@ So to make this switch, it has to be worth it.
 
 ## Results
 
-We'll keep this short by focusing on the 1e7 runs:
+We'll keep this short by focusing on the 1e7 runs as this is where performance is most critical:
 
-![](benchmark/figures_mac/csharp_Insert_bar_e6.png)
-![](benchmark/figures_mac/csharp_Select_bar_e6.png)
-![](benchmark/figures_mac/csharp_Xor1_bar_e6.png)
-![](benchmark/figures_mac/csharp_Xor2_bar_e6.png)
-![](benchmark/figures_mac/csharp_Join_bar_e6.png)
-![](benchmark/figures_mac/csharp_NewBlockset_bar_e6.png)
+![](benchmark/figures_win/csharp_Insert_bar_e7.png)
+![](benchmark/figures_win/csharp_Select_bar_e7.png)
+![](benchmark/figures_win/csharp_Xor1_bar_e7.png)
+![](benchmark/figures_win/csharp_Xor2_bar_e7.png)
+![](benchmark/figures_win/csharp_Join_bar_e7.png)
+![](benchmark/figures_win/csharp_NewBlockset_bar_e7.png)
 
-In all cases, we see that the C++ runs are the fastest, but not by a large margin, indicating that the C# implementations are quite competitive, even beating the C++ run through the PInvoke interface in the 'Select' benchmark.
-Across the different benchmarks, the performance differences are relatively small, suggesting that the C# implementations are well-optimized.
+In all cases, we see that the that the C# implementation is quite competitive compared to the C++ implementation. It should be noted that we have presented the plots from the Windows machine, but the plots from the other machines do not differ significantly. But you are welcome to [inspect yourself on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark).
 
-While the overall winner is synchronous Microsoft.Data.Sqlite, the asynchronous version is not far behind, making it a favorable candidate for a new backend due to its added asynchronous capabilities.
+TODO update link when published.
+
+Across the plots we see that the different C# backends have varying strengths: PInvoke generally performs the best, Duplicati and System.Data performs best on join, with Microsoft.Data.Sqlite performing well on all of them.
 
 # Duplicati revisit
 
 The Microsoft.Data.Sqlite is a seemingly good candidate for Duplicati:
 
-- It is bundled with the newest SQLite binaries, so we don't have to compile it ourselves.
+- It is bundled with the newest SQLite binaries, so we don't have to compile and maintain it ourselves.
 - It is a modern first-class ADO.NET provider for SQLite, offering better performance and more features than the older System.Data.SQLite.
 - It has a more stringent interface, making it easier to work with and reducing the likelihood of errors by reducing implicit side-effects.
 - It has great asynchronous support, making it easier to build responsive applications and performs well with high-concurrency workloads, such as Duplicati.
@@ -371,6 +373,8 @@ We see a nice improvement across the four operations, with the most significant 
 - While this blog post focuses on SQLite, it has still been with Duplicati in mind. We have made a light investigation into the effects on Duplicati, but a more extensive analysis is needed to fully optimize database accesses. Some parts will require new database schemas, some modifications to the queries and indices, and potentially new manual caching strategies.
 
 - Microsoft.Data.Sqlite allows for bulk inserts. Maybe there's value in keeping a small batch in memory, flushing it to the database periodically. This is only true if the bulk inserts on their own are faster than individual inserts.
+
+- The benchmarks have only been performed on high-end hardware, so further testing on lower-end devices may be necessary to fully conclude that these performance improvements are present on all types of devices.
 
 # Conclusion
 
