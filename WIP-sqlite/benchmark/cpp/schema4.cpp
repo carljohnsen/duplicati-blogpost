@@ -123,7 +123,7 @@ int select_index_normal(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema10_insert_index_normal");
+    measure_insert(db, config, rng, "schema4_insert_index_normal");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID FROM Block WHERE h0 = ? AND h1 = ? AND h2 = ? AND h3 = ? AND Size = ?;";
@@ -179,7 +179,7 @@ int select_index_normal(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema10_select_index_normal");
+    report_stats(config, times, "schema4_select_index_normal");
 
     return 0;
 }
@@ -200,7 +200,7 @@ int select_index_h0(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema10_insert_index_h0");
+    measure_insert(db, config, rng, "schema4_insert_index_h0");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID, h1, h2, h3, Size FROM Block WHERE h0 = ?;";
@@ -276,7 +276,7 @@ int select_index_h0(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema10_select_index_h0");
+    report_stats(config, times, "schema4_select_index_h0");
 
     return 0;
 }
@@ -297,7 +297,7 @@ int select_index_h0_size(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema10_insert_index_h0_size");
+    measure_insert(db, config, rng, "schema4_insert_index_h0_size");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID, h1, h2, h3 FROM Block WHERE h0 = ? AND Size = ?;";
@@ -373,7 +373,7 @@ int select_index_h0_size(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema10_select_index_h0_size");
+    report_stats(config, times, "schema4_select_index_h0_size");
 
     return 0;
 }
@@ -394,7 +394,7 @@ int select_index_size(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema10_insert_index_size");
+    measure_insert(db, config, rng, "schema4_insert_index_size");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID, h0, h1, h2, h3 FROM Block WHERE Size = ?;";
@@ -470,7 +470,7 @@ int select_index_size(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema10_select_index_size");
+    report_stats(config, times, "schema4_select_index_size");
 
     return 0;
 }

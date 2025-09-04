@@ -114,7 +114,7 @@ int select_index_normal(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema7_insert_index_normal");
+    measure_insert(db, config, rng, "schema3_insert_index_normal");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID FROM Block WHERE Hash = ? AND Size = ?;";
@@ -164,7 +164,7 @@ int select_index_normal(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema7_select_index_normal");
+    report_stats(config, times, "schema3_select_index_normal");
 
     return 0;
 }
@@ -185,7 +185,7 @@ int select_index_hash(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema7_insert_index_hash");
+    measure_insert(db, config, rng, "schema3_insert_index_hash");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID, Size FROM Block WHERE Hash = ?;";
@@ -253,7 +253,7 @@ int select_index_hash(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema7_select_index_hash");
+    report_stats(config, times, "schema3_select_index_hash");
 
     return 0;
 }
@@ -274,7 +274,7 @@ int select_index_size(Config &config)
     if (fill(db, rng, entries, config.num_entries) != 0)
         return -1;
 
-    measure_insert(db, config, rng, "schema7_insert_index_size");
+    measure_insert(db, config, rng, "schema3_insert_index_size");
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
     std::string sql = "SELECT ID, Hash FROM Block WHERE Size = ?;";
@@ -342,7 +342,7 @@ int select_index_size(Config &config)
     sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
     sqlite3_close(db);
 
-    report_stats(config, times, "schema7_select_index_size");
+    report_stats(config, times, "schema3_select_index_size");
 
     return 0;
 }

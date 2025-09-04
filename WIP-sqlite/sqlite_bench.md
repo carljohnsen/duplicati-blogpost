@@ -176,21 +176,25 @@ The database is created from scratch for every benchmark, because we want to inv
 Duplicati already uses indices, so there's not much we can do in terms of adding new indices.
 However, we can modify the schema to ease the work needed by the database engine, hopefully leading to better performance.
 Especially, we'll see if we can modify the `Hash` column in the block table, which is currently a `TEXT` column, and we'll investigate different indexing strategies for each of the modified schemas, which should allow for smaller, and thus faster, indices. Whether this is actually the case will be investigated in the benchmarks.
-We will investigate the following:
+We will investigate the following schemas and index combinations:
 
-1. The normal `Hash` column as a `TEXT` column, with the index on `(Hash, Size)`.
-2. 1 with the index on `Hash` only,. This means that since the query will result in multiple rows, we will have to filter the results in userland to find the correct row.
-3. 1 with the index on `Size` only, further filtering in userland.
-4. Change the `Hash` column to a `BLOB` column, which is more efficient for storing binary data. This should improve performance, as this should remove any string overhead and the overhead from base64 encoding. Here the index would be on `(Hash, Size)`.
-5. 4 with the index on `Hash` only, further filtering in userland.
-6. 4 with the index on `Size` only, further filtering in userland.
-7. Change the `Hash` column to a `VARCHAR(44)` column, which is more efficient for storing fixed-length strings. Here the index would be on `(Hash, Size)`.
-8. 7 with the index on `Hash` only, further filtering in userland.
-9. 7 with the index on `Size` only, further filtering in userland.
-10. Change the `Hash` column to be four `INTEGER` columns (`h0`, `h1`, `h2`, `h3`) each storing 64-bit integers. This should allow SQLite to index and compare the values more efficiently, as it becomes integer comparisons rather than string comparisons. Like storing as a `BLOB`, this approach also alleviates using base64 encoding. The first index used would be on `(h0, h1, h2, h3, Size)`.
-11. 10 with the index on `(h0, Size)` only, further filtering in userland.
-12. 10 with the index on `h0` only, further filtering in userland.
-13. 10 with the index on `Size` only, further filtering in userland.
+1. The original schema, where the `Hash` column is of type `TEXT`.
+   - With the "normal" index on `(Hash, Size)`.
+   - With the index on `Hash` only,. This means that since the query will result in multiple rows, we will have to filter the results in userland to find the correct row.
+   - With the index on `Size` only, further filtering in userland.
+2. Change the `Hash` column to type `BLOB`, which is more efficient for storing binary data. This should improve performance, as this should remove any string overhead and the overhead from base64 encoding.
+   - With the "normal" index on `(Hash, Size)`.
+   - With the index on `Hash` only, further filtering in userland.
+   - With the index on `Size` only, further filtering in userland.
+3. Change the `Hash` column to type `VARCHAR(44)` column, which for some database engines are more efficient as the size hint allows for internal optimizations.
+   - With the "normal" index on `(Hash, Size)`.
+   - With the index on `Hash` only, further filtering in userland.
+   - With the index on `Size` only, further filtering in userland.
+4. Change the `Hash` column to be four `INTEGER` columns (`h0`, `h1`, `h2`, `h3`) each storing 64-bit integers. This should allow SQLite to index and compare the values more efficiently, as it becomes integer comparisons rather than string comparisons. Like storing as a `BLOB`, this approach also alleviates using base64 encoding.
+   - With the "normal" index on `(h0, h1, h2, h3, Size)`.
+   - With the index on `(h0, Size)` only, further filtering in userland.
+   - With the index on `h0` only, further filtering in userland.
+   - With the index on `Size` only, further filtering in userland.
 
 These variations lets us test whether changing the schema or indexes can improve performance. For each variation we adapt the insert and select queries to match the schema and index according to the specification. Let's start by looking at the performance of insert:
 
