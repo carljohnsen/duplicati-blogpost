@@ -10,7 +10,7 @@ else
 	CXXFLAGS += -march=native
 endif
 
-TARGETS=schema1 schema4 schema7 schema10 pragmas parallel batching
+TARGETS=schema1 schema2 schema3 schema4 pragmas parallel batching
 TARGETS := $(addprefix bin/, $(TARGETS))
 
 all: $(TARGETS)

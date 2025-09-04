@@ -9,9 +9,9 @@ batches=(0 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536)
 
 for size in "${sizes[@]}"; do
     ./bin/schema1 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
+    ./bin/schema2 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
+    ./bin/schema3 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
     ./bin/schema4 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
-    ./bin/schema7 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
-    ./bin/schema10 --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
     ./bin/pragmas --num-entries $size --num-warmup $warmup --num-repetitions $repetitions
     for thread in "${threads[@]}"; do
         ./bin/parallel --num-entries $size --num-warmup $warmup --num-repetitions $repetitions --num-threads $thread

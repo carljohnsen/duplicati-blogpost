@@ -12,9 +12,9 @@ set batches=0 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536
 
 for %%s in (%sizes%) do (
     .\bin\schema1 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
+    .\bin\schema2 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
+    .\bin\schema3 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
     .\bin\schema4 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
-    .\bin\schema7 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
-    .\bin\schema10 --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
     .\bin\pragmas --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions%
     for %%t in (%threads%) do (
         .\bin\parallel --num-entries %%s --num-warmup %warmup% --num-repetitions %repetitions% --num-threads %%t
