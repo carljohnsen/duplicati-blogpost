@@ -1,0 +1,8 @@
+2025-09-08 13:12:57 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Backup has started
+2025-09-08 13:30:10 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Backup has completed
+2025-09-08 13:30:11 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Repair has started
+2025-09-08 14:05:30 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Repair has completed
+2025-09-08 14:05:30 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Restore has started
+2025-09-08 14:10:11 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Restore has completed
+2025-09-08 14:10:12 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Delete has started
+2025-09-08 14:20:37 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Delete has completed
