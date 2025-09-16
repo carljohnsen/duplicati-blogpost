@@ -1,14 +1,14 @@
 import datetime
 import os
 
-base_dir = 'lib/duplicati'
+base_dir = 'reports_win'
 operations = ['backup', 'repair', 'restore', 'delete']
 versions = ['120', '125']
 times = {ver: { op: { 'begin': -1, 'end': -1 } for op in operations} for ver in versions}
 
 time_format = None
 for ver in versions:
-    with open(f'{base_dir}/{ver}.log') as f:
+    with open(f'{base_dir}/{ver}-summary.log') as f:
         for line in f:
             toks = line.strip().lower().split(' ')
             if toks[-2] != 'has' or (toks[-1] != 'started' and toks[-1] != 'completed'):
