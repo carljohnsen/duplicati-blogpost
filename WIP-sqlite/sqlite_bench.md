@@ -16,14 +16,14 @@ While the work is motivated by the Duplicati project, it is not limited to it, l
 
 The following table shows the different machines used alongside which compilers used:
 
-| Machine (label)        | CPU                                    | RAM                                  | Disk (theoretical peak)                | OS                   | .NET    | C++                       | SQLite |
-| ---------------------- | -------------------------------------- | ------------------------------------ | -------------------------------------- | -------------------- | ------- | ------------------------- | ------ |
-| MacBook Pro 2021 (mac) | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | 1 NVMe SSD ~5 GB/s                     | macOS Sequoia 15.6.1 | 9.0.101 | g++ 15.1.0                | 3.43.2 |
-| AMD 1950X (t01)        | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | 2 PCIe 3.0 NVMe SSD in Raid 0 ~ 8 GB/s | Ubuntu 24.04.1 LTS   | 9.0.101 | g++ 13.3.0                | 3.45.1 |
-| AMD 7975WX (t02)       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.3 LTS   | 9.0.300 | g++ 13.3.0                | 3.45.1 |
-| AMD 9800X3D (win)      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | TODO    | Microsoft C++ (MSVC) TODO | 3.50.4 |
+| Machine (label)        | CPU                                    | RAM                                  | Disk (theoretical peak)                | OS                   | .NET    | C++                              | SQLite |
+| ---------------------- | -------------------------------------- | ------------------------------------ | -------------------------------------- | -------------------- | ------- | -------------------------------- | ------ |
+| MacBook Pro 2021 (mac) | (ARM64) M1 Max 10-core (8P+2E) 3.2 GHz | 64 GB LPDDR5-6400 ~400 GB/s          | 1 NVMe SSD ~5 GB/s                     | macOS Sequoia 15.6.1 | 9.0.101 | g++ 15.1.0                       | 3.43.2 |
+| AMD 1950X (t01)        | (x86_64) 16-core 3.4 GHz (4.0)         | 128 GB DDR4-3200 4-channel ~200 GB/s | 2 PCIe 3.0 NVMe SSD in Raid 0 ~ 8 GB/s | Ubuntu 24.04.1 LTS   | 9.0.101 | g++ 13.3.0                       | 3.45.1 |
+| AMD 7975WX (t02)       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.3 LTS   | 9.0.300 | g++ 13.3.0                       | 3.45.1 |
+| AMD 9800X3D (win)      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | 9.0.304 | Microsoft C++ (MSVC) 19.44.35214 | 3.50.4 |
 
-The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available in the different figures folders [on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark) alongside the benchmarking scripts, artefacts, and programs.
+The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available in the different figures folders [on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark) alongside the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
 
 TODO update link when publishing.
 
@@ -344,7 +344,7 @@ We'll keep this short by focusing on the 1e7 runs as this is where performance i
 ![](benchmark/figures_win/csharp_Join_bar_e7.png)
 ![](benchmark/figures_win/csharp_NewBlockset_bar_e7.png)
 
-In all cases, we see that the that the C# implementation is quite competitive compared to the C++ implementation. It should be noted that we have presented the plots from the Windows machine, but the plots from the other machines do not differ significantly. But you are welcome to [inspect yourself on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark).
+In all cases, we see that the that the C# implementation is quite competitive compared to the C++ implementation. It should be noted that we have presented the plots from the Windows machine, but the plots from the other machines do not differ significantly. But you are welcome to [inspect yourself on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark). This contains the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
 
 TODO update link when published.
 
