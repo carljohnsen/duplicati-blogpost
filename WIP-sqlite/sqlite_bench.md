@@ -304,7 +304,7 @@ We'll do a short look into each of them, their pros/cons, and their performance 
 We'll look into this to provide a baseline to compare against without any pragmas, as this is closer to what Duplicati already uses.
 Duplicati's shipped SQLite features prebuilt binaries for all of the architectures that Duplicati supports.
 However, due to previous compatibility issues, the SQLite version is not the latest, leading to some missing features found in newer versions.
-This also means that we have to build the binaries with each of our releases. This gives greater control over the build process, at the cost of increased maintenance overhead.
+This does allow us to build the binaries with each of our releases giving us greater control over the build process, at the cost of increased maintenance overhead.
 
 ## Microsoft.Data.Sqlite
 
@@ -323,8 +323,8 @@ It also allows for cancellation, improving the responsiveness of the application
 
 ## sqlite3 C API through PInvoke
 
-This is a low-level approach that involves using PInvoke to call the SQLite C API directly from .NET. While this can offer the best performance.
-This approach is generally not recommended unless absolutely necessary since this involves dealing with memory management and marshaling data between managed and unmanaged code, further leading to unsafe code.
+This is a low-level approach that involves using PInvoke to call the SQLite C API directly from .NET.
+While this can offer the best performance, it is generally not recommended unless absolutely necessary since this involves dealing with memory management and marshaling data between managed and unmanaged code, further leading to unsafe code.
 So this has to be extremely beneficial in terms of performance to justify the complexity and added risk, but proves an interesting comparison to the overhead of C# compared to C++ since they're now both using the same underlying SQLite library.
 
 ## System.Data.SQLite
