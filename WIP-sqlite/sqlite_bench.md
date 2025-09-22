@@ -368,22 +368,23 @@ If we look at the timings for the t02 machine:
 
 | Operation | Previous (v2.1.0.120) | New (v2.1.125) | Speedup |
 | --------- | --------------------: | -------------: | ------: |
-| Backup    |                1033 s |          687 s |   1.53x |
-| Recreate  |                2119 s |         1915 s |   1.10x |
-| Restore   |                 281 s |          227 s |   1.19x |
-| Delete    |                1140 s |          490 s |   1.33x |
+| Backup    |                1515 s |         1169 s |   1.30x |
+| Recreate  |                1124 s |         2101 s |   0.53x |
+| Restore   |                 193 s |          167 s |   1.24x |
+| Delete    |                 611 s |          605 s |   1.01x |
 
-We see a nice improvement across the four operations, with the most significant gains in backup and delete times. While the speedups aren't enormous, they do indicate that the new backend is more efficient in handling these operations, as the change between the two versions only involves updates to the database access layer.
+We see a nice improvement for three of the four operations, with the most significant gains in backup and restore times. While the speedups aren't enormous, they do indicate that the new backend is more efficient in handling these operations, as the change between the two versions only involves updates to the database access layer.
+One strange result is the recreate operation, which performs significantly worse. Further investigation is needed to fully understand this behavior.
 For completeness, here are the timings for all of the machines:
 
 | Operation |   Mac |   t01 |   t02 |   Win |
 | --------- | ----: | ----: | ----: | ----: |
-| Backup    | 1.93x | 1.89x | 1.50x | 0.96x |
-| Recreate  | 0.99x | 0.96x | 1.11x | 0.34x |
-| Restore   | 1.11x | 1.21x | 1.24x | 1.08x |
-| Delete    | 1.39x | 1.31x | 1.28x | 0.40x |
+| Backup    | 1.93x | 1.89x | 1.50x | 1.30x |
+| Recreate  | 0.99x | 0.96x | 1.11x | 0.53x |
+| Restore   | 1.11x | 1.21x | 1.24x | 1.24x |
+| Delete    | 1.39x | 1.31x | 1.28x | 1.01x |
 
-Here we see that for all platforms, the new backend performs better for backup, recreate, and restore. However, the Windows machine performs significantly worse, which is not reflected in the other benchmarks. Further investigation is needed to fully understand this behavior.
+Here we see that for all platforms, the new backend generally performs better for backup, recreate, and delete. But like the win machine, the recreate operation performs worse on the mac and t01 machines. The best performance is seen on the mac machine, where the backup operation performs nearly twice as fast.
 
 # Future work
 
