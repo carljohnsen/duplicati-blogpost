@@ -46,5 +46,3 @@ for %%t in (%TARGETS%) do (
     link /OUT:bin\%%t.exe obj\%%t.obj %LIBS% %LINKFLAGS%
 )
 copy lib\sqlite-dll-win-x64-3500400\sqlite3.dll bin
-
-dotnet build -c Release csharp
