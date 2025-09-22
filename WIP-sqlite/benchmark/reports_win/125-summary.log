@@ -1,8 +1,8 @@
-2025-08-29 13.49.22 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Backup has started
-2025-08-29 14.25.52 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Backup has completed
-2025-08-29 15.02.12 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Delete has started
-2025-08-29 15.12.04 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Delete has completed
-2025-08-29 14.25.52 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Repair has started
-2025-08-29 14.59.25 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Repair has completed
-2025-08-29 14.59.25 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Restore has started
-2025-08-29 15.02.11 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Restore has completed
+2025-09-22 17.24.09 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Backup has started
+2025-09-22 17.43.38 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Backup has completed
+2025-09-22 17.43.38 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Repair has started
+2025-09-22 18.18.39 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Repair has completed
+2025-09-22 18.18.39 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Restore has started
+2025-09-22 18.21.26 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Restore has completed
+2025-09-22 18.21.27 +02 - [Information-Duplicati.Library.Main.Controller-StartingOperation]: The operation Delete has started
+2025-09-22 18.31.32 +02 - [Information-Duplicati.Library.Main.Controller-CompletedOperation]: The operation Delete has completed
