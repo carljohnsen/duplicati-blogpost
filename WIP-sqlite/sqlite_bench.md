@@ -246,7 +246,7 @@ We've run the benchmarks with the same sizes as before, but the biggest impact o
 ![](benchmark/figures_win/pragmas_join_e6.png)
 ![](benchmark/figures_win/pragmas_blockset_e6.png)
 
-All of these plots show great performance gains, 1.47 - 5.21 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement by increasing the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance.
+All of these plots show great performance gains, 1.47 - 5.21 times improvement over the baseline. The biggest improvements were seen with `cache_size`, then `mmap_size`, and finally `journal_mode`. The reason why the join benchmark has a lower improvement is likely due to the benchmark already being very fast (notice the y-axis scale changes across plots). We do see that there could be further improvement by increasing the sizes of `cache_size` and `mmap_size`, but setting both at 64M seems to be a good balance. We also see some improvement from `threads`, but the effect is quite small on all but the mac machine, where it seems to have a larger effect. Therefore, we choose the default as 8, as the effect is negligible on the other machines, but does provide some improvement on the mac machine.
 
 If we focus the relative performance of 'normal' and 'combination', we can show a plot for all benchmarks across all sizes:
 
@@ -358,19 +358,32 @@ The Microsoft.Data.Sqlite is a seemingly good candidate for Duplicati:
 - It is a modern first-class ADO.NET provider for SQLite, offering better performance and more features than the older System.Data.SQLite.
 - It has a more stringent interface, making it easier to work with and reducing the likelihood of errors by reducing implicit side-effects.
 - It has great asynchronous support, making it easier to build responsive applications and performs well with high-concurrency workloads, such as Duplicati.
+- It performs well across all of the benchmarks, especially the new blockset benchmark, which is the most representative of the database-heavy workloads in Duplicati.
 
 All of these pros triggered the integration of this as a new backend in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
 While not a complete benchmark, we'll quickly compare the performance of backup, recreate, restore, and delete in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database. Finally, we set the cache size to the same as the default for the new backend to make them more comparable.
 
-| Metric            | Previous Version (2.1.0.120) | New Version (2.1.125) | Speedup |
-| ----------------- | ---------------------------- | --------------------- | ------- |
-| Backup time (s)   | 1026                         | 667                   | 1.53    |
-| Recreate time (s) | 2100                         | 1905                  | 1.10    |
-| Restore time (s)  | 277                          | 231                   | 1.19    |
-| Delete time (s)   | 629                          | 472                   | 1.33    |
+If we look at the timings for the t02 machine:
+
+| Operation | Previous (v2.1.0.120) | New (v2.1.125) | Speedup |
+| --------- | --------------------: | -------------: | ------: |
+| Backup    |                1033 s |          687 s |   1.53x |
+| Recreate  |                2119 s |         1915 s |   1.10x |
+| Restore   |                 281 s |          227 s |   1.19x |
+| Delete    |                1140 s |          490 s |   1.33x |
 
 We see a nice improvement across the four operations, with the most significant gains in backup and delete times. While the speedups aren't enormous, they do indicate that the new backend is more efficient in handling these operations, as the change between the two versions only involves updates to the database access layer.
+For completeness, here are the timings for all of the machines:
+
+| Operation |   Mac |   t01 |   t02 |   Win |
+| --------- | ----: | ----: | ----: | ----: |
+| Backup    | 1.93x | 1.89x | 1.50x | 0.96x |
+| Recreate  | 0.99x | 0.96x | 1.11x | 0.34x |
+| Restore   | 1.11x | 1.21x | 1.24x | 1.08x |
+| Delete    | 1.39x | 1.31x | 1.28x | 0.40x |
+
+Here we see that for all platforms, the new backend performs better for backup, recreate, and restore. However, the Windows machine performs significantly worse, which is not reflected in the other benchmarks. Further investigation is needed to fully understand this behavior.
 
 # Future work
 
