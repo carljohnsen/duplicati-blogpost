@@ -47,7 +47,7 @@ or
 
 # Running the Duplicati comparisons
 
-To compare the performance of Duplicati with different SQLite backends, you can use the `run_duplicati.sh` script on Mac/Linux or `run_duplicati.bat` on Windows. This will run Duplicati with both the old and new SQLite backends and generate log file summaries for later analysis.
+To compare the performance of Duplicati with different SQLite backends, you can use the `run_duplicati.sh` script on Mac/Linux or `run_duplicati.ps1` on Windows. This will run Duplicati with both the old and new SQLite backends and generate log file summaries for later analysis.
 
 ```sh
 ./run_duplicati.sh
@@ -55,8 +55,8 @@ To compare the performance of Duplicati with different SQLite backends, you can 
 
 or
 
-```bat
-.\run_duplicati.bat
+```powershell
+.\run_duplicati.ps1
 ```
 
 # Analyzing the results
