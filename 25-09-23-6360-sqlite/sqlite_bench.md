@@ -9,7 +9,7 @@ This blog post describes different implementations, optimizations, tunes, and be
 - Parallelizing database operations with multiple connections is beneficial for read-heavy workloads, but quickly deteriorates performance for write-heavy workloads.
 - SQLite favors large transactions, providing over 66x performance for certain workloads.
 - The C# SQLite providers are competitive to the C API, with Microsoft.Data.Sqlite being the fastest.
-- Implementing the asynchronous Microsoft.Data.Sqlite backend in Duplicati has shown promising results. With Duplicati in a database stressing state it now performs 1.53x, 1.10x, 1.19x, and 1.33x times better for backup, recreate, restore, and delete operations respectively.
+- Implementing the asynchronous Microsoft.Data.Sqlite backend in Duplicati has shown promising results. With Duplicati in a database stressing state it can perform 1.50x, 1.11x, 1.24x, and 1.28x times better for backup, recreate, restore, and delete operations respectively.
 
 ## Machine setup
 
@@ -358,4 +358,4 @@ We've seen how large batches can significantly improve performance (up to 66x), 
 
 Finally, we've seen how C# is competitive to C++ in terms of SQLite performance. We've also seen how the Microsoft.Data.Sqlite library provides better performance, a more stringent interface, and improved support for asynchronous operations, which primed the new backend implemented in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
-Implementing the new backend along with the pragmas, Duplicati in a database stressing state now performs 1.53x, 1.10x, 1.19x, and 1.33x times better for backup, recreate, restore, and delete operations respectively.
+Implementing the new backend along with the pragmas, Duplicati in a database stressing state now performs 1.50x, 1.11x, 1.24x, and 1.28x times better for backup, recreate, restore, and delete operations respectively.
