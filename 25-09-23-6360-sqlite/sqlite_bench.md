@@ -23,9 +23,7 @@ The following table shows the different machines used alongside which compilers 
 | AMD 7975WX (t02)       | (x86_64) 32-core 4.0 GHz (5.3)         | 512 GB DDR5-4800 8-channel ~300 GB/s | 2 PCIe 5.0 NVMe SSD in Raid 0 ~28 GB/s | Ubuntu 24.04.3 LTS   | 9.0.300 | g++ 13.3.0                       | 3.45.1 |
 | AMD 9800X3D (win)      | (x86_64) 8-core 4.7 GHz (5.2)          | 96 GB DDR5-6400 2-channel ~100 GB/s  | 1 PCIe 5.0 NVMe SSD ~14 GB/s           | Windows 11 x64       | 9.0.304 | Microsoft C++ (MSVC) 19.44.35214 | 3.50.4 |
 
-The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available in the different figures folders [on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark) alongside the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
-
-TODO update link when publishing.
+The plots presented in this blog post is from the AMD 9800X3D, but plots for the other machines are also available in the different figures folders [on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/25-09-23-6360-sqlite/benchmark) alongside the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
 
 # Introduction
 
@@ -344,9 +342,7 @@ We'll keep this short by focusing on the 1e7 runs as this is where performance i
 ![](benchmark/figures_win/csharp_Join_bar_e7.png)
 ![](benchmark/figures_win/csharp_NewBlockset_bar_e7.png)
 
-In all cases, we see that the that the C# implementation is quite competitive compared to the C++ implementation. It should be noted that we have presented the plots from the Windows machine, but the plots from the other machines do not differ significantly. But you are welcome to [inspect yourself on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/WIP-sqlite/benchmark). This contains the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
-
-TODO update link when published.
+In all cases, we see that the that the C# implementation is quite competitive compared to the C++ implementation. It should be noted that we have presented the plots from the Windows machine, but the plots from the other machines do not differ significantly. But you are welcome to [inspect yourself on GitHub](https://github.com/carljohnsen/duplicati-blogpost/tree/main/25-09-23-6360-sqlite/benchmark). This contains the benchmarking scripts (`run_all.[sh|bat]`, `run_duplicati.[sh|bat]`, `plotting.ipynb`, and `timings_diff.py`), artefacts (`reports_[label]` and `figures_[label]`), and programs (`csharp/`, `cpp/`, `Makefile`, and `make_win.bat`).
 
 Across the plots we see that the different C# backends have varying strengths: PInvoke generally performs the best, Duplicati and System.Data performs best on join, with Microsoft.Data.Sqlite performing well on all of them.
 
