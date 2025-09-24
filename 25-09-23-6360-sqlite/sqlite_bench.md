@@ -314,16 +314,16 @@ The Microsoft.Data.Sqlite is a seemingly good candidate for Duplicati:
 
 All of these pros triggered the integration of this as a new backend in [PR 6360](https://github.com/duplicati/duplicati/pull/6360) available in [Duplicati Canary 2.1.0.121](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.121_canary_2025-07-07) onwards.
 
-While not a complete benchmark, we'll quickly compare the performance of backup, recreate, restore, and delete in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database. Finally, we set the cache size to the same as the default for the new backend to make them more comparable.
+While not a complete benchmark, we'll quickly compare the performance of backup, recreate, restore, and delete in [the previous version (2.1.0.120)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.120_canary_2025-06-24) compared to [the version with the new backend (2.1.0.125)](https://github.com/duplicati/duplicati/releases/tag/v2.1.0.125_canary_2025-07-15). We'll be using the medium dataset outlined in the [restore rework blog post](https://forum.duplicati.com/t/blog-post-cut-restore-times-by-3-8x-a-deep-dive-into-our-new-restore-flow/20415). We'll also lower the volume size to 1mb and block size to 1 kb to really stress the database. Finally, we set the cache size to the same as the default for the new backend to make them more comparable.
 
 If we look at the timings for the t02 machine:
 
-| Operation | Previous (v2.1.0.120) | New (v2.1.125) | Speedup |
-| --------- | --------------------: | -------------: | ------: |
-| Backup    |                1515 s |         1169 s |   1.30x |
-| Recreate  |                1124 s |         2101 s |   0.53x |
-| Restore   |                 193 s |          167 s |   1.24x |
-| Delete    |                 611 s |          605 s |   1.01x |
+| Operation | Previous (v2.1.0.120) | New (v2.1.0.125) | Speedup |
+| --------- | --------------------: | ---------------: | ------: |
+| Backup    |                1515 s |           1169 s |   1.30x |
+| Recreate  |                1124 s |           2101 s |   0.53x |
+| Restore   |                 193 s |            167 s |   1.24x |
+| Delete    |                 611 s |            605 s |   1.01x |
 
 We see a nice improvement for three of the four operations, with the most significant gains in backup and restore times. While the speedups aren't enormous, they do indicate that the new backend is more efficient in handling these operations, as the change between the two versions only involves updates to the database access layer. One strange result is the recreate operation, which performs significantly worse. Further investigation is needed to fully understand this behavior. For completeness, here are the timings for all of the machines:
 
