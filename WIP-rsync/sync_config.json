@@ -1,0 +1,12 @@
+{
+  "sync-on-warnings": true,
+  "destinations": [
+    {
+      "url": "file://data_backup2",
+      "mode": "inline",
+      "auto-create-folders": true,
+      "backend-retries": 3,
+      "verify-contents": true
+    }
+  ]
+}
