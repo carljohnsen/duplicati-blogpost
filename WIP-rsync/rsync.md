@@ -103,7 +103,12 @@ The tool supports a variety of options to control its behavior:
 
 ## Example Usage
 
-We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available in [rsync.bat](TODO/example_rsync_tool.bat) for Windows and [rsync.sh](TODO/example_rsync_tool.sh) for Mac/Linux. The scripts perform the following steps:
+We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available as `example_rsync.ps1` for Windows (PowerShell) and `example_rsync.sh` for Mac/Linux (bash). To run them, provide the mode as the first argument: `[tool|auto]`. Use `tool` to test the Remote Synchronization Tool, and `auto` to test the Remote Synchronization Post-Backup Phase. For example:
+
+- On Windows: `.\example_rsync.ps1 tool`
+- On Mac/Linux: `./example_rsync.sh tool` (ensure the script is executable with `chmod +x example_rsync.sh`)
+
+The scripts perform the following steps:
 
 - Creates some test files in a source directory.
 - Runs a backup job to create a backup in a source backup location.
@@ -246,7 +251,7 @@ Finally, we can restore from the secondary destination to verify that the backup
 
 ![animation of restoring from secondary destination](TODO/restoring_from_secondary_destination.gif)
 
-This process can also be performed using the CLI, as outlined in [auto321.bat](TODO/auto321.bat) for Windows and [auto321.sh](TODO/auto321.sh) for Mac/Linux.
+This process can also be performed using the CLI with the `auto` mode of the example scripts, which performs the same steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
 
 # Performance Considerations / Future Optimizations
 
