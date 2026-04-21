@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Ensure script runs from the directory containing the 'duplicati' folder
+# Ensure script runs from the directory containing the 'data_duplicati' folder
 set -e # Exit immediately if a command exits with a non-zero status
 
 # Produce a final hash of each of the backup directories and check if they match
@@ -27,7 +27,7 @@ mkdir -p data_raw
 if [ -d "data_raw" ] && [ "$(ls -A data_raw)" ]; then
     echo "data_raw already exists and is not empty. Skipping test data generation."
 else
-    ./data_duplicati/Tools/TestDataGenerator/bin/Debug/net10.0/TestDataGenerator create ./data_raw/ --file-count 10000 --max-file-size 104857600 --max-total-size 1073741824 --sparse-factor 30
+    ./data_duplicati/Tools/TestDataGenerator/bin/Debug/net10.0/TestDataGenerator create ./data_raw/ --file-count 1000 --max-file-size 1048576 --max-total-size 104857600 --sparse-factor 30
 fi
 
 echo "Performing Backup 1..."
