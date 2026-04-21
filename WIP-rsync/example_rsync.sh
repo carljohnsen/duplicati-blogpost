@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Parse the first argument to the script
+mode="$1"
+if [ -z "$mode" ]; then
+    echo "No mode specified. Usage: $0 [tool|auto]"
+    exit 1
+fi
+
 # Ensure script runs from the directory containing the 'data_duplicati' folder
 set -e # Exit immediately if a command exits with a non-zero status
 
@@ -31,8 +38,14 @@ else
 fi
 
 echo "Performing Backup..."
+rsync_arg="$(if [ "$mode" = "tool" ]; then echo "--remote-sync-json-config=./sync_config.json"; fi)"
 mkdir -p data_backup1 data_backup2
-./data_duplicati/Executables/Duplicati.CommandLine/bin/Debug/net10.0/Duplicati.CommandLine backup file://data_backup1 ./data_raw/ --passphrase=1234 --remote-sync-json-config=./sync_config.json
+./data_duplicati/Executables/Duplicati.CommandLine/bin/Debug/net10.0/Duplicati.CommandLine backup file://data_backup1 ./data_raw/ --passphrase=1234 $rsync_arg
+
+if [ "$mode" = "tool" ]; then
+    echo "Performing Sync..."
+    ./data_duplicati/Executables/Duplicati.CommandLine.SyncTool/bin/Debug/net10.0/Duplicati.CommandLine.SyncTool file://data_backup1 file://data_backup2 --confirm --progress
+fi
 
 echo "Performing Restore 1..."
 mkdir -p data_restore1
