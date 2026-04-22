@@ -80,24 +80,38 @@ This means you can maintain consistent backups across multiple locations without
 
 ## Options
 
-The tool supports a variety of options to control its behavior:
+The tool supports a variety of options to control its behavior, grouped into categories for clarity:
+
+### General Options
+
+- `--dry-run` Show what would be done without making changes. Read operations are still performed to determine differences, but no write operations are executed (default: `false`).
+- `--confirm`, `--yes` `-y` Skip confirmation prompts for destructive operations (default: `false`).
+- `--progress` Print progress during synchronization (default: `false`).
+- `--parse-arguments-only` Only parse arguments without executing synchronization (default: `false`).
+
+### Synchronization Options
 
 - `--auto-create-folders` Automatically create missing folders in the destination (default: `true`).
+- `--force` Force copying of files even if metadata matches (default: `false`).
+- `--retention` Retention mode where deletions are renamed instead of removed (default: `false`).
+
+### Backend Options
+
 - `--backend-retries N` Number of retries for backend operations (default: `3`).
 - `--backend-retry-delay MS` Delay between backend retries in milliseconds (default: `1000`).
 - `--backend-retry-with-exponential-backoff` Enable exponential backoff for retries (default: `true`).
-- `--confirm`, `--yes` `-y` Skip confirmation prompts for destructive operations (default: `false`).
-- `--dry-run` Show what would be done without making changes. Read operations are still performed to determine differences, but no write operations are executed (default: `false`).
-- `--dst-options` Additional options to pass to the destination backend (format: `key1=value1 key2=value2 ...`).
-- `--force` Force copying of files even if metadata matches (default: `false`).
-- `--global-options` Additional options to pass to both backends (format: `key1=value1 key2=value2 ...`).
-- `--log-file PATH` Path to log file (default: none, logs to console).
-- `--log-level LEVEL` Logging level (Duplicati log levels: ExplicitOnly, Profiling, Verbose, Retry, Information, DryRun, Warning, Error; default: `Information`).
-- `--parse-arguments-only` Only parse arguments without executing synchronization (default: `false`).
-- `--progress` Print progress during synchronization (default: `false`).
-- `--retention` Retention mode where deletions are renamed instead of removed (default: `false`).
 - `--retry N` Number of retries for failed operations (default: `3`).
 - `--src-options` Additional options to pass to the source backend (format: `key1=value1 key2=value2 ...`).
+- `--dst-options` Additional options to pass to the destination backend (format: `key1=value1 key2=value2 ...`).
+- `--global-options` Additional options to pass to both backends (format: `key1=value1 key2=value2 ...`).
+
+### Logging Options
+
+- `--log-file PATH` Path to log file (default: none, logs to console).
+- `--log-level LEVEL` Logging level (Duplicati log levels: ExplicitOnly, Profiling, Verbose, Retry, Information, DryRun, Warning, Error; default: `Information`).
+
+### Verification Options
+
 - `--verify-contents` Verify file contents by downloading matching pre-existing files and hashing before copying. It can be used as a safety check for whether files on the destination have changed or become corrupted (based on the hash of the source file) (default: `false`).
 - `--verify-get-after-put` Verify destination file contents by re-downloading and hashing after copying (default: `false`).
 
