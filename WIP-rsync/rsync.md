@@ -7,8 +7,8 @@ A reliable backup strategy has to account for hardware failure, ransomware, clou
 - **1 off-site copy**
 
 By having your data protected in multiple locations, you ensure business continuity even in the face of failures.
-Failure can emerge both from hardware issues, software issues, and from ransomware attacks.
-E.g. if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from.
+Failure can emerge from hardware issues, software issues, or ransomware attacks.
+e.g., if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from.
 By having multiple copies in different locations, you can mitigate the risk of losing access to your data.
 This is exactly what the 3-2-1 rule aims to alleviate.
 
@@ -51,21 +51,21 @@ Each approach has drawbacks:
 
 What's missing is a way to say: "This backup already exists; now just make another destination look exactly like it." Remote synchronization fills that gap.
 
----
-
 # The Remote Synchronization Tool
 
 The Remote Synchronization Tool is a standalone utility designed to synchronize the contents of one remote backup location to another. Unlike a backup operation, it doesn't read from the original source data, it doesn't chunk the data, and it doesn't perform any compression or encryption. Instead, it operates entirely on existing remote backup data, treating one backup location as the authoritative source and another as a replica. In other words, it's like having a master copy of your files that gets replicated to different locations.
 
+It can be used as a standalone tool for manual or scripted synchronization, leveraging the same backend implementations as Duplicati for maximum compatibility. The contents of the files being synchronized are opaque to the tool, which only sees them as files with metadata, making it compatible with not only Duplicati backups but also any other data stored in supported backends.
+
 ## What It Does
 
-The tool performs a full comparison between two remote backup locations (referred to as "source" and "destination") and takes actions to make the destination match the source. Specifically:
+The tool performs a full comparison between two remote backup locations (referred to as "source" and "destination") and takes actions to make the destination match the source. Specifically (in order):
 
 - Lists all files in both source and destination backup locations.
 - Compares file metadata (size, timestamp, etc.) to determine differences.
+- Optionally verifies destination file contents for pre-existing files against source file contents for integrity.
+- Deletes files from the destination that are no longer present in the source (with optional retention behavior that renames rather than deletes). This is performed before copying to free up space.
 - Copies new or changed files from source to destination (optionally forcefully). A copy consists of downloading the file from the source and uploading it to the destination.
-- Deletes files from the destination that are no longer present in the source (with optional retention behavior that renames rather than deletes).
-- Optionally verifies destination file contents of pre-existing files against source file contents for integrity.
 
 The intent is deterministic convergence: after a successful run, the destination represents the same backup state as the source.
 
@@ -108,7 +108,7 @@ The tool supports a variety of options to control its behavior, grouped into cat
 ### Logging Options
 
 - `--log-file PATH` Path to log file (default: none, logs to console).
-- `--log-level LEVEL` Logging level (Duplicati log levels: ExplicitOnly, Profiling, Verbose, Retry, Information, DryRun, Warning, Error; default: `Information`).
+- `--log-level LEVEL` Logging level (Duplicati log levels: `ExplicitOnly`, `Profiling`, `Verbose`, `Retry`, `Information`, `DryRun`, `Warning`, `Error`; default: `Information`).
 
 ### Verification Options
 
@@ -117,12 +117,12 @@ The tool supports a variety of options to control its behavior, grouped into cat
 
 ## Example Usage
 
-We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available as `example_rsync.ps1` for Windows (PowerShell) and `example_rsync.sh` for Mac/Linux (bash). To run them, provide the mode as the first argument: `[tool|auto]`. Use `tool` to test the Remote Synchronization Tool, and `auto` to test the Remote Synchronization Post-Backup Phase. For example:
+We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available as `example_rsync.ps1` for Windows (PowerShell) and `example_rsync.sh` for Mac/Linux (bash). To run them, provide the mode as the first argument: `[tool|auto]`. Use `tool` to test the Remote Synchronization Tool, and `auto` to test the Remote Synchronization Post-Backup Phase (described in the [next section](#from-manual-to-automatic-the-remote-synchronization-post-backup-phase)). For example:
 
 - On Windows: `.\example_rsync.ps1 tool`
 - On Mac/Linux: `./example_rsync.sh tool` (ensure the script is executable with `chmod +x example_rsync.sh`)
 
-The scripts perform the following steps:
+The scripts perform the following steps in `tool` mode:
 
 - Creates some test files in a source directory.
 - Runs a backup job to create a backup in a source backup location.
@@ -133,7 +133,7 @@ The scripts perform the following steps:
 
 # From Manual to Automatic: The Remote Synchronization Post-Backup Phase
 
-While the remote synchronization tool can be invoked manually or scripted, we've added a post-backup phase to integrate it directly into Duplicati's backup process.
+While the Remote Synchronization Tool can be invoked manually or scripted, we've added a post-backup phase to integrate it directly into Duplicati's backup process.
 This post-backup phase allows users to define remote synchronization policies that automatically trigger after successful backups, without needing to manage separate scripts or processes.
 
 ## Key Integration Benefits
@@ -147,8 +147,7 @@ This has several important implications:
 In effect, the post-backup phase turns remote synchronization into a backup policy, rather than a separate process.
 While we could have implemented this in the core backup logic, e.g. by broadcasting uploads to multiple destinations during backup, we chose to keep it separate so:
 
-1. We make sure that it doesn't trigger on failed or incomplete backups. It'll only ever happen with a consistent stable-state backup.
-   and
+1. We make sure that it doesn't trigger on failed or incomplete backups. It'll only ever happen with a consistent, stable-state backup.
 2. Any issues regarding secondary backup destinations won't affect the primary backup operation. If a synchronization fails, the backup is still valid and can be restored from, and the failure is logged for later review.
 
 ## Configuring Remote Synchronization
@@ -187,7 +186,23 @@ This structure allows:
 - Independent retry and verification policies.
 - Different schedules for different storage tiers.
 
-Through the commandline interface, users can either provide the JSON string or a path to a file containing the configuration. The UI handles the JSON configuration automatically as described in the later section. TODO ref
+Through the command-line interface, users can either provide the JSON string or a path to a file containing the configuration. The UI handles the JSON configuration automatically as described in the [Configuring Automatic Remote Synchronization](#configuring-automatic-remote-synchronization) section.
+
+## CLI Examples
+
+The remote synchronization post-backup phase can be configured via CLI using the `--remote-sync-config` option in the backup command.
+
+Example using inline JSON (on Mac/Linux, use single quotes to avoid escaping):
+
+```
+duplicati-cli backup "file:///source" "file:///primary/backup" --remote-sync-config '{"sync-on-warnings": true, "destinations": [{"url": "file:///offsite/backup", "mode": "inline", "auto-create-folders": true}]}'
+```
+
+Example using a config file:
+
+```
+duplicati-cli backup "file:///source" "file:///primary/backup" --remote-sync-config /path/to/sync-config.json
+```
 
 ## Trigger Modes: When Synchronization Happens
 
@@ -245,6 +260,15 @@ Each destination is evaluated independently, meaning:
 
 This behavior ensures that remote synchronization enhances reliability.
 
+Additional edge cases and failure handling:
+
+- **Network interruptions**: If a network failure occurs during file transfer, the operation retries up to the configured limit with exponential backoff. Partially transferred files are picked up on subsequent runs.
+- **Destination storage full**: Synchronization fails if the destination lacks sufficient space. The error is logged, and no partial state is left.
+- **Authentication failures**: Invalid credentials for source or destination backends cause immediate failure for that destination, without affecting others.
+- **Corrupted files**: With `--verify-contents` enabled, mismatches trigger re-download and re-upload. Persistent corruption may lead to repeated failures.
+- **Concurrent modifications**: If the source is modified during sync, the tool may detect inconsistencies. Use `--force` to overwrite, but this risks data loss.
+- **Partial sync recovery**: Failed syncs leave the destination in an inconsistent state. Re-running the tool will resume from the last consistent point, copying missing or changed files.
+
 ## Configuring Automatic Remote Synchronization
 
 In addition to JSON and CLI configuration, remote synchronization can also be configured through the Duplicati UI, which produces the underlying JSON configuration automatically.
@@ -265,28 +289,30 @@ Finally, we can restore from the secondary destination to verify that the backup
 
 ![animation of restoring from secondary destination](TODO/restoring_from_secondary_destination.gif)
 
-This process can also be performed using the CLI with the `auto` mode of the example scripts, which performs the same steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
+This process can also be performed using the CLI with the `auto` mode of the example scripts, which performs similar steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
 
-# Performance Considerations / Future Optimizations
+# Performance Considerations and Future Optimizations
 
-Remote synchronization is designed to be simple and lightweight. This does mean that it may not be the most performant solution:
+The Remote Synchronization Tool is designed to be decoupled, simple, and lightweight. However, this approach may not be the most performant for all scenarios due to the following limitations:
 
 - Each file is copied individually, which can lead to overhead for large numbers of small files.
-- It doesn't use advanced synchronization algorithms (e.g. block-level delta transfers) that some specialized tools might support.
+- It doesn't use advanced synchronization algorithms (e.g., block-level delta transfers) that some specialized tools might support.
 - Verification options can add additional overhead, especially for large files.
 - It runs single-threaded by default, which can limit throughput on high-bandwidth connections.
 - To ensure consistency, each destination is synchronized independently, which can lead to longer total synchronization times, as the primary remote destination has to be read multiple times (once per missing file per secondary destination).
 
-From this, we can create the following list of potential future optimizations:
+## Potential Future Optimizations
 
-1. Overlapped file transfers, where files are downloaded, verified, and uploaded concurrently. This would allow for better utilization of network and CPU resources, whilst keeping the memory and disk footprint low.
-2. Download once, copy many, where a collective plan for missing files across all destinations is compiled. This plan is then used for each downloaded file, which is copied to all destinations that require it. This would reduce the number of times the primary remote destination has to be read, which can significantly improve performance when synchronizing to multiple secondary destinations.
-3. Parallelization, where multiple files are synchronized concurrently. This would allow for even better utilization of network and CPU resources, at the cost of increased complexity and potential issues with rate limits and resource contention (e.g. disk and memory).
-4. Caching new volumes created during the main backup phase. Rather than downloading the file from the primary remote destination, we could cache it locally during the backup phase and then use the cached version for synchronization. This would eliminate the need to read from the primary remote destination for new files. If remote synchronization was triggered from a schedule rather than inline, then some files would still need to be read from the primary remote destination, but this would still reduce the number of files that need to be read.
+From the above limitations, we can identify the following potential optimizations:
+
+1. **Overlapped file transfers**: Download, verify, and upload files concurrently to better utilize network and CPU resources while keeping memory and disk footprint low.
+2. **Download once, copy many**: Compile a collective plan for missing files across all destinations. Use this plan to copy each downloaded file to all required destinations, reducing reads from the primary remote destination and improving performance for multiple secondary destinations.
+3. **Parallelization**: Synchronize multiple files concurrently for better resource utilization, though this increases complexity and adds potential issues with rate limits and resource contention (e.g., disk and memory).
+4. **Caching new volumes**: Cache new volumes locally during the backup phase and use them for synchronization instead of downloading from the primary remote destination. This eliminates reads for new files, though scheduled synchronization might still require some reads.
 
 ## Summary
 
-The Remote Synchronization Tool and Post-Backup Phase together provide:
+The Remote Synchronization Tool and Remote Synchronization Post-Backup Phase together provide:
 
 - Backend-agnostic replication of backups.
 - Automated, policy-driven synchronization.
