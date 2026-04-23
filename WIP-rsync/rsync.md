@@ -8,7 +8,7 @@ A reliable backup strategy has to account for hardware failure, ransomware, clou
 
 By having your data protected in multiple locations, you ensure business continuity even in the face of failures.
 Failure can emerge from hardware issues, software issues, or ransomware attacks.
-e.g., if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from.
+For example, if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from.
 By having multiple copies in different locations, you can mitigate the risk of losing access to your data.
 This is exactly what the 3-2-1 rule aims to alleviate.
 
