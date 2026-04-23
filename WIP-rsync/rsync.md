@@ -27,8 +27,6 @@ Duplicati now includes a **Remote Synchronization Tool** and **Remote Synchroniz
 - Enable automated 3-2-1 backup strategies.
 - Work with any Duplicati backend (cloud, local, etc.).
 
-TODO UI screenshot / animation
-
 # The problem
 
 In practice, a high redundancy backup strategy often means more than one backup location:
@@ -273,21 +271,17 @@ Additional edge cases and failure handling:
 
 In addition to JSON and CLI configuration, remote synchronization can also be configured through the Duplicati UI, which produces the underlying JSON configuration automatically.
 
-Let's walk through creating the same setup as with the remote synchronization example. First, we create a backup job that saves to a local server.
+Let's walk through creating the same setup as with the remote synchronization example. First, we create a backup job that saves to a local folder and has an SSH server as secondary destination.
 
-![animation of creating backup job](TODO/backup_job_creation.gif)
-
-Then we can configure the secondary destination with `sync-on-warnings` enabled and in `inline` mode:
-
-![animation of setting up the secondary destination](TODO/secondary_destination_setup.gif)
+![animation of creating backup job](images/backup_job_creation.gif)
 
 Then we can run our backup job and see that the UI also reports the status of the remote synchronization phase:
 
-![animation of running backup job and showing remote synchronization status](TODO/running_backup_job.gif)
+![animation of running backup job and showing remote synchronization status](images/running_backup_job.gif)
 
 Finally, we can restore from the secondary destination to verify that the backup was successfully replicated:
 
-![animation of restoring from secondary destination](TODO/restoring_from_secondary_destination.gif)
+![animation of restoring from secondary destination](images/restoring_from_secondary_destination.gif)
 
 This process can also be performed using the CLI with the `auto` mode of the example scripts, which performs similar steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
 
