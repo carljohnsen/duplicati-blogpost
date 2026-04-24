@@ -6,14 +6,9 @@ A reliable backup strategy has to account for hardware failure, ransomware, clou
 - **2 different storage types**
 - **1 off-site copy**
 
-By having your data protected in multiple locations, you ensure business continuity even in the face of failures.
-Failure can emerge from hardware issues, software issues, or ransomware attacks.
-For example, if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from.
-By having multiple copies in different locations, you can mitigate the risk of losing access to your data.
-This is exactly what the 3-2-1 rule aims to alleviate.
+By having your data protected in multiple locations, you ensure business continuity even in the face of failures. Failure can emerge from hardware issues, software issues, or ransomware attacks. For example, if an attacker encrypts your machine and the backup destination has a hardware failure or is also encrypted, you will be left without a backup to restore from. By having multiple copies in different locations, you can mitigate the risk of losing access to your data. This is exactly what the 3-2-1 rule aims to alleviate.
 
-Duplicati already supports a wide variety of backends, including cloud storage, local disks, and network shares.
-However, managing multiple destinations has traditionally required either duplicate backup jobs or external tooling.
+Duplicati already supports a wide variety of backends, including cloud storage, local disks, and network shares. However, managing multiple destinations has traditionally required either duplicate backup jobs or external tooling.
 
 With the introduction of the **Remote Synchronization Tool** and the **Remote Synchronization Post-Backup Phase**, Duplicati now provides a native, backend-agnostic way to replicate backups between destinations, enabling automated 3-2-1 workflows without having to scan the source data multiple times.
 
@@ -131,8 +126,7 @@ The scripts perform the following steps in `tool` mode:
 
 # From Manual to Automatic: The Remote Synchronization Post-Backup Phase
 
-While the Remote Synchronization Tool can be invoked manually or as part of a script, we've added a post-backup phase to integrate it directly into Duplicati's backup process.
-This post-backup phase allows users to define remote synchronization policies that automatically trigger after successful backups, without needing to manage separate scripts or processes.
+While the Remote Synchronization Tool can be invoked manually or as part of a script, we've added a post-backup phase to integrate it directly into Duplicati's backup process. This post-backup phase allows users to define remote synchronization policies that automatically trigger after successful backups, without needing to manage separate scripts or processes.
 
 ## Key Integration Benefits
 
@@ -142,16 +136,14 @@ This has several important implications:
 - Failures in synchronization do not affect the integrity of the backup itself as the remote synchronization process is decoupled from the backup operation.
 - The same synchronization logic found in the tool is reused by the post-backup phase, ensuring consistency across both manual and automatic synchronization scenarios.
 
-In effect, the post-backup phase turns remote synchronization into a backup policy, rather than a separate process.
-While we could have implemented this in the core backup logic, e.g. by broadcasting uploads to multiple destinations during backup, we chose to keep it separate so:
+In effect, the post-backup phase turns remote synchronization into a backup policy, rather than a separate process. While we could have implemented this in the core backup logic, e.g. by broadcasting uploads to multiple destinations during backup, we chose to keep it separate so:
 
 1. We make sure that it doesn't trigger on failed or incomplete backups. It'll only ever happen with a consistent, stable-state backup.
 2. Any issues regarding secondary backup destinations won't affect the primary backup operation. If a synchronization fails, the backup is still valid and can be restored from, and the failure is logged for later review.
 
 ## Configuring Remote Synchronization
 
-Remote synchronization is configured using a JSON configuration.
-At minimum, the configuration must define a `destinations` array. Each destination corresponds to one replication target and maps directly to the options supported by the Remote Synchronization Tool.
+Remote synchronization is configured using a JSON configuration. At minimum, the configuration must define a `destinations` array. Each destination corresponds to one replication target and maps directly to the options supported by the Remote Synchronization Tool.
 
 Example:
 
