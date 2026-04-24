@@ -131,7 +131,7 @@ The scripts perform the following steps in `tool` mode:
 
 # From Manual to Automatic: The Remote Synchronization Post-Backup Phase
 
-While the Remote Synchronization Tool can be invoked manually or scripted, we've added a post-backup phase to integrate it directly into Duplicati's backup process.
+While the Remote Synchronization Tool can be invoked manually or as part of a script, we've added a post-backup phase to integrate it directly into Duplicati's backup process.
 This post-backup phase allows users to define remote synchronization policies that automatically trigger after successful backups, without needing to manage separate scripts or processes.
 
 ## Key Integration Benefits
@@ -140,7 +140,7 @@ This has several important implications:
 
 - Synchronization only runs when backup data is known to be in a consistent state, reducing the risk of propagating incomplete or corrupted backups. This can be relaxed a bit with the `sync-on-warnings` option, which allows synchronization to proceed even if the backup finishes with warnings.
 - Failures in synchronization do not affect the integrity of the backup itself as the remote synchronization process is decoupled from the backup operation.
-- The same synchronization logic is reused, not duplicated.
+- The same synchronization logic found in the tool is reused by the post-backup phase, ensuring consistency across both manual and automatic synchronization scenarios.
 
 In effect, the post-backup phase turns remote synchronization into a backup policy, rather than a separate process.
 While we could have implemented this in the core backup logic, e.g. by broadcasting uploads to multiple destinations during backup, we chose to keep it separate so:
@@ -224,7 +224,7 @@ Important characteristics:
 
 - The schedule is relative to successful backups since the last synchronization.
 - If no backups succeed, no synchronization occurs. The following successful backup will trigger synchronization and reset the schedule.
-- Missed schedules are not "made up".
+- Missed schedules are not "made up" later; the schedule simply waits for the next successful backup to trigger synchronization and reset the schedule.
 
 This makes scheduled mode useful for:
 
