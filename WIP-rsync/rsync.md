@@ -21,7 +21,7 @@ This post introduces both components and explains how they work together to enab
 
 # TL;DR
 
-Duplicati now includes a **Remote Synchronization Tool** and **Remote Synchronization Post-Backup Phase** to:
+Duplicati now (since [2.3.0.1 stable](TODO)) includes a **Remote Synchronization Tool** and **Remote Synchronization Post-Backup Phase** to:
 
 - Replicate backups between destinations without re-scanning the source data.
 - Enable automated 3-2-1 backup strategies.
@@ -312,5 +312,7 @@ The Remote Synchronization Tool and Remote Synchronization Post-Backup Phase tog
 - Automated, policy-driven synchronization.
 - Flexible trigger strategies.
 - First-class support for automated 3-2-1 backup setups.
+
+They're part of Duplicati since [2.3.0.1 stable](TODO) and can be used immediately to enhance your backup strategy.
 
 **This means you can now implement robust, multi-location backup strategies with minimal effort and maximum reliability.**
