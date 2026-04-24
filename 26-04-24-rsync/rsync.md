@@ -21,7 +21,7 @@ This post introduces both components and explains how they work together to enab
 
 # TL;DR
 
-Duplicati now (since [2.3.0.1 stable](TODO)) includes a **Remote Synchronization Tool** and **Remote Synchronization Post-Backup Phase** to:
+Duplicati (available in [2.3.0.1 stable](https://github.com/duplicati/duplicati/releases/tag/v2.3.0.1_stable_2026-04-24)) includes a **Remote Synchronization Tool** and **Remote Synchronization Post-Backup Phase** to:
 
 - Replicate backups between destinations without re-scanning the source data.
 - Enable automated 3-2-1 backup strategies.
@@ -115,7 +115,7 @@ The tool supports a variety of options to control its behavior, grouped into cat
 
 ## Example Usage
 
-We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available as `example_rsync.ps1` for Windows (PowerShell) and `example_rsync.sh` for Mac/Linux (bash). To run them, provide the mode as the first argument: `[tool|auto]`. Use `tool` to test the Remote Synchronization Tool, and `auto` to test the Remote Synchronization Post-Backup Phase (described in the [next section](#from-manual-to-automatic-the-remote-synchronization-post-backup-phase)). For example:
+We've created two example scripts that demonstrate the functionality on local drives (for reproducibility). They're available as [`example_rsync.ps1`](https://github.com/carljohnsen/duplicati-blogpost/blob/main/26-04-24-rsync/example_rsync.ps1) for Windows (PowerShell) and [`example_rsync.sh`](https://github.com/carljohnsen/duplicati-blogpost/blob/main/26-04-24-rsync/example_rsync.sh) for Mac/Linux (bash). To run them, provide the mode as the first argument: `[tool|auto]`. Use `tool` to test the Remote Synchronization Tool, and `auto` to test the Remote Synchronization Post-Backup Phase (described in the [next section](#from-manual-to-automatic-the-remote-synchronization-post-backup-phase)). For example:
 
 - On Windows: `.\example_rsync.ps1 tool`
 - On Mac/Linux: `./example_rsync.sh tool` (ensure the script is executable with `chmod +x example_rsync.sh`)
@@ -283,7 +283,7 @@ Finally, we can restore from the secondary destination to verify that the backup
 
 ![animation of restoring from secondary destination](images/restoring_from_secondary_destination.gif)
 
-This process can also be performed using the CLI with the `auto` mode of the example scripts, which performs similar steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
+This process can also be performed using the CLI with the `auto` mode of the example scripts [`example_rsync.ps1`](https://github.com/carljohnsen/duplicati-blogpost/blob/main/26-04-24-rsync/example_rsync.ps1) and [`example_rsync.sh`](https://github.com/carljohnsen/duplicati-blogpost/blob/main/26-04-24-rsync/example_rsync.sh), which performs similar steps as the UI walkthrough conveniently as a CLI script: `.\example_rsync.ps1 auto` on Windows or `./example_rsync.sh auto` on Mac/Linux.
 
 # Performance Considerations and Future Optimizations
 
@@ -313,6 +313,6 @@ The Remote Synchronization Tool and Remote Synchronization Post-Backup Phase tog
 - Flexible trigger strategies.
 - First-class support for automated 3-2-1 backup setups.
 
-They're part of Duplicati since [2.3.0.1 stable](TODO) and can be used immediately to enhance your backup strategy.
+They're part of Duplicati since [2.3.0.1 stable](https://github.com/duplicati/duplicati/releases/tag/v2.3.0.1_stable_2026-04-24) and can be used immediately to enhance your backup strategy.
 
 **This means you can now implement robust, multi-location backup strategies with minimal effort and maximum reliability.**
